@@ -26,7 +26,12 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from models import NGOProfile, Transaction, db
+# Support both package-style imports (recommended when running as
+# `python -m backend.app`) and direct script-style imports.
+try:  # package import
+    from ..models import NGOProfile, Transaction, db
+except ImportError:  # script import fallback
+    from models import NGOProfile, Transaction, db  # type: ignore
 
 
 SECTOR_NORMALIZATION = {
@@ -78,7 +83,14 @@ def _load_ngo_frame() -> pd.DataFrame:
 
 
 def _load_funding_frame(last_n_days: int = 365) -> pd.DataFrame:
-    """Aggregate transaction history into a funding DataFrame."""
+    """
+    Aggregate transaction history into a funding DataFrame.
+
+    In addition to the total amount received by each NGO, we also
+    track a lightweight proxy for "popularity" via transaction count.
+    This allows the fairness layer to softly tilt recommendations
+    toward lesser-known NGOs (fewer historical donations).
+    """
     cutoff = datetime.utcnow() - timedelta(days=last_n_days)
     txs = (
         Transaction.query.join(NGOProfile, Transaction.ngo_id == NGOProfile.id)
@@ -87,7 +99,7 @@ def _load_funding_frame(last_n_days: int = 365) -> pd.DataFrame:
     )
 
     if not txs:
-        return pd.DataFrame(columns=["ngo_id", "sector", "total_amount"])
+        return pd.DataFrame(columns=["ngo_id", "sector", "total_amount", "tx_count"])
 
     rows = []
     for tx in txs:
@@ -96,10 +108,20 @@ def _load_funding_frame(last_n_days: int = 365) -> pd.DataFrame:
                 "ngo_id": tx.ngo_id,
                 "sector": tx.ngo.sector,
                 "total_amount": float(tx.amount),
+                # Count each transaction once; this is used as a
+                # simple "visibility/popularity" signal.
+                "tx_count": 1,
             }
         )
     df = pd.DataFrame.from_records(rows)
-    grouped = df.groupby(["ngo_id", "sector"], as_index=False)["total_amount"].sum()
+    grouped = (
+        df.groupby(["ngo_id", "sector"], as_index=False)
+        .agg(
+            total_amount=("total_amount", "sum"),
+            tx_count=("tx_count", "sum"),
+        )
+        .astype({"tx_count": "int64"})
+    )
     return grouped
 
 
@@ -181,11 +203,14 @@ def _apply_fairness_adjustment(
         df["final_score"] = df["base_similarity"]
     else:
         merged = df.merge(
-            funding_df[["ngo_id", "total_amount"]], on="ngo_id", how="left"
+            funding_df[["ngo_id", "total_amount", "tx_count"]],
+            on="ngo_id",
+            how="left",
         )
         merged["total_amount"] = merged["total_amount"].fillna(0.0)
+        merged["tx_count"] = merged["tx_count"].fillna(0.0)
 
-        # Compute sector medians
+        # Compute sector medians for amount-based underfunding
         sector_median = (
             merged.groupby("sector")["total_amount"].transform("median").replace(0, 1.0)
         )
@@ -201,6 +226,27 @@ def _apply_fairness_adjustment(
         merged.loc[underfunded_mask, "fairness_multiplier"] = multiplier[
             underfunded_mask
         ]
+
+        # Additional "lesser-known NGO" preference:
+        # NGOs with fewer historical transactions receive a soft boost,
+        # encouraging discovery of smaller or emerging organizations.
+        if "tx_count" in merged.columns:
+            tx_count_series = merged["tx_count"].astype(float)
+            if not tx_count_series.empty:
+                # Derive simple buckets from overall distribution
+                q25, q50 = tx_count_series.quantile([0.25, 0.50])
+                low_mask = tx_count_series <= max(1.0, q25)
+                mid_mask = (tx_count_series > max(1.0, q25)) & (
+                    tx_count_series <= max(1.0, q50)
+                )
+
+                # Stronger boost for the least-known NGOs, lighter boost for mid-tier
+                lesser_known_bonus = np.where(low_mask, 0.30, 0.0)
+                lesser_known_bonus = np.where(
+                    mid_mask & ~low_mask, 0.15, lesser_known_bonus
+                )
+
+                merged["fairness_multiplier"] *= 1.0 + lesser_known_bonus
 
         merged["final_score"] = merged["base_similarity"] * merged["fairness_multiplier"]
         df = merged

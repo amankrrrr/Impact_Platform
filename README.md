@@ -18,7 +18,7 @@ This repository contains:
 
 ## How to run (Windows PowerShell)
 
-### 1) Start the backend API
+### Recommended: single command for full stack
 
 Open PowerShell in the project root:
 
@@ -27,22 +27,33 @@ cd "c:\Users\Administrator\Desktop\fyp_website\fyp"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r .\backend\requirements.txt
-python .\backend\app.py
+python .\main.py
 ```
 
-Backend will run at **`http://127.0.0.1:5000`** and automatically create a local SQLite DB file named `platform.db`.
+This starts **both** the backend API and the React SPA from a single Flask process at:
 
-### 2) Start the frontend (static server)
+- **`http://127.0.0.1:5000`**
 
-Open a **second** PowerShell window:
+You can now open the browser directly at `http://127.0.0.1:5000` and use the app.
+
+### Legacy (two-process) setup
+
+If you prefer to keep backend and frontend servers separate, you can still use:
 
 ```powershell
+# Window 1: backend API
+cd "c:\Users\Administrator\Desktop\fyp_website\fyp"
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r .\backend\requirements.txt
+python .\backend\app.py
+
+# Window 2: static frontend
 cd "c:\Users\Administrator\Desktop\fyp_website\fyp\frontend"
 python -m http.server 5173
 ```
 
-Now open the app in your browser:
-- **`http://127.0.0.1:5173`**
+In this mode the backend runs at **`http://127.0.0.1:5000`** and the SPA is served at **`http://127.0.0.1:5173`**.
 
 ---
 

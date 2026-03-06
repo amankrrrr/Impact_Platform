@@ -326,16 +326,25 @@ function NGOPosts({ token }) {
     const [content, setContent] = useState("");
     const [mediaUrl, setMediaUrl] = useState("");
     const [submitting, setSubmitting] = useState(false);
+    const [postType, setPostType] = useState("FUNDING_REQUIREMENT");
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setSubmitting(true);
         try {
+            const friendlyLabel =
+                postType === "GRANT_REQUEST"
+                    ? "Grant Request"
+                    : postType === "FUNDING_REQUIREMENT"
+                    ? "Funding Requirement"
+                    : "Update";
+            const payloadContent = `[${friendlyLabel}] ${content.trim()}`;
+
             await apiRequest(
                 "/posts",
                 "POST",
                 {
-                    content,
+                    content: payloadContent,
                     media_url: mediaUrl || undefined,
                     visibility: "PUBLIC",
                 },
@@ -353,14 +362,26 @@ function NGOPosts({ token }) {
 
     return (
         <div className="card">
-            <h2>Share Funding Needs & Milestones</h2>
+            <h2>Share Requirements & Grant Requests</h2>
+            <p className="muted" style={{ marginBottom: "0.6rem" }}>
+                Publish specific funding requirements, grant asks, or general impact updates so donors can
+                quickly understand how to support your work.
+            </p>
             <form className="form-grid" onSubmit={handleSubmit}>
+                <label>
+                    Post Type
+                    <select value={postType} onChange={(e) => setPostType(e.target.value)}>
+                        <option value="FUNDING_REQUIREMENT">Funding requirement</option>
+                        <option value="GRANT_REQUEST">Grant / partnership ask</option>
+                        <option value="UPDATE">General update</option>
+                    </select>
+                </label>
                 <label className="full-width">
-                    Update
+                    Describe your need / proposal
                     <textarea
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
-                        placeholder="Describe current funding requirements or project milestones..."
+                        placeholder="Example: We are seeking a PKR 500,000 grant to expand our after‑school program to 3 more districts over the next 12 months..."
                         required
                     />
                 </label>
@@ -396,6 +417,9 @@ function DonorPortal({ user, token }) {
         currency: "USD",
         description: "",
     });
+    const [searchTerm, setSearchTerm] = useState("");
+    const [sortBy, setSortBy] = useState("final_score");
+    const [usedFallback, setUsedFallback] = useState(false);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -405,9 +429,32 @@ function DonorPortal({ user, token }) {
     const handleMatch = async (e) => {
         e.preventDefault();
         setLoading(true);
+        setUsedFallback(false);
         try {
             const res = await apiRequest("/recommendations", "POST", prefs, token);
-            setResults(res.recommendations || []);
+            const recs = res.recommendations || [];
+            if (recs.length > 0) {
+                setResults(recs);
+            } else {
+                // If the AI engine has no data to work with yet (e.g. no NGOs
+                // or no training history), gracefully fall back to all
+                // registered NGOs so users still see useful options.
+                const ngoRes = await apiRequest("/ngos", "GET", undefined, token);
+                const raw = ngoRes.ngos || [];
+                const mapped = raw.map((n, idx) => ({
+                    ngo_id: n.id,
+                    name: n.name,
+                    sector: n.sector,
+                    geographic_focus: n.geographic_focus,
+                    // Neutral-but-consistent placeholder scores so that
+                    // sorting and UI elements continue to work.
+                    base_similarity: 0.5,
+                    fairness_multiplier: 1.0,
+                    final_score: 0.5 - idx * 0.01,
+                }));
+                setResults(mapped);
+                setUsedFallback(true);
+            }
         } catch (err) {
             alert(err.message);
         } finally {
@@ -461,6 +508,32 @@ function DonorPortal({ user, token }) {
         }
     };
 
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    let visibleResults = results;
+    if (normalizedSearch) {
+        visibleResults = visibleResults.filter((ngo) => {
+            const haystack = `${ngo.name} ${ngo.sector} ${ngo.geographic_focus}`.toLowerCase();
+            return haystack.includes(normalizedSearch);
+        });
+    }
+    visibleResults = [...visibleResults].sort((a, b) => {
+        const aFinal = Number(a.final_score || 0);
+        const bFinal = Number(b.final_score || 0);
+        const aFair = Number(a.fairness_multiplier || 1);
+        const bFair = Number(b.fairness_multiplier || 1);
+        const aBase = Number(a.base_similarity || 0);
+        const bBase = Number(b.base_similarity || 0);
+
+        if (sortBy === "fairness") {
+            return bFair - aFair || bFinal - aFinal;
+        }
+        if (sortBy === "similarity") {
+            return bBase - aBase || bFinal - aFinal;
+        }
+        // default: final score
+        return bFinal - aFinal;
+    });
+
     return (
         <div className="grid-2">
             <div className="card">
@@ -508,8 +581,42 @@ function DonorPortal({ user, token }) {
                         {loading ? "Matching..." : "Find NGOs"}
                     </button>
                 </form>
+                {results.length > 0 && (
+                    <p className="muted" style={{ marginTop: "0.6rem" }}>
+                        Matching for: <strong>{prefs.cause || "Any cause"}</strong>{" "}
+                        · <strong>{prefs.location || "Any location"}</strong>{" "}
+                        · Budget{" "}
+                        <strong>
+                            {prefs.min_budget || "0"} – {prefs.max_budget || "∞"}
+                        </strong>
+                    </p>
+                )}
+                {results.length > 0 && (
+                    <div className="row-actions" style={{ marginTop: "0.75rem" }}>
+                        <label style={{ flex: 1, minWidth: "180px" }}>
+                            <span style={{ display: "block", fontSize: "0.78rem", color: "#64748b" }}>
+                                Search within recommended NGOs
+                            </span>
+                            <input
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="Filter by name, sector, or geography..."
+                            />
+                        </label>
+                        <label>
+                            <span style={{ display: "block", fontSize: "0.78rem", color: "#64748b" }}>
+                                Sort by
+                            </span>
+                            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                                <option value="final_score">Overall score (AI + fairness)</option>
+                                <option value="fairness">Fairness boost (supports lesser‑known)</option>
+                                <option value="similarity">Match to your preferences</option>
+                            </select>
+                        </label>
+                    </div>
+                )}
                 <div className="results-grid">
-                    {results.map((ngo) => (
+                    {visibleResults.map((ngo) => (
                         <div key={ngo.ngo_id} className="card subtle">
                             <h3>{ngo.name}</h3>
                             <p>
@@ -541,6 +648,18 @@ function DonorPortal({ user, token }) {
                         <p className="muted">
                             Submit your preferences to see AI-ranked NGO recommendations that
                             balance relevance with fairness.
+                        </p>
+                    )}
+                    {results.length > 0 && visibleResults.length === 0 && (
+                        <p className="muted">
+                            No NGOs match your current search. Try clearing or relaxing your filters.
+                        </p>
+                    )}
+                    {usedFallback && results.length > 0 && (
+                        <p className="muted">
+                            Showing all registered NGOs because the AI engine does not yet have
+                            enough data to prioritize them. As profiles and transactions grow,
+                            this view will become smarter.
                         </p>
                     )}
                 </div>
@@ -633,6 +752,11 @@ function NetworkingDirectory({ token, requireAuth }) {
     const [ngos, setNgos] = useState([]);
     const [followeeIds, setFolloweeIds] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [sectorFilter, setSectorFilter] = useState("ALL");
+    const [selectedNgo, setSelectedNgo] = useState(null);
+    const [selectedDetails, setSelectedDetails] = useState(null);
+    const [detailsLoading, setDetailsLoading] = useState(false);
 
     const load = async () => {
         setLoading(true);
@@ -666,6 +790,34 @@ function NetworkingDirectory({ token, requireAuth }) {
         load();
     };
 
+    const openDetails = async (ngo) => {
+        setSelectedNgo(ngo);
+        setSelectedDetails(null);
+        setDetailsLoading(true);
+        try {
+            const res = await apiRequest(`/ngos/${ngo.id}`, "GET", undefined, token);
+            setSelectedDetails(res);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setDetailsLoading(false);
+        }
+    };
+
+    const closeDetails = () => {
+        setSelectedNgo(null);
+        setSelectedDetails(null);
+    };
+
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const sectors = Array.from(new Set(ngos.map((n) => n.sector).filter(Boolean))).sort();
+    const filteredNgos = ngos.filter((ngo) => {
+        if (sectorFilter !== "ALL" && ngo.sector !== sectorFilter) return false;
+        if (!normalizedSearch) return true;
+        const haystack = `${ngo.name} ${ngo.sector} ${ngo.geographic_focus}`.toLowerCase();
+        return haystack.includes(normalizedSearch);
+    });
+
     return (
         <div className="grid-2">
             <div className="card">
@@ -673,11 +825,35 @@ function NetworkingDirectory({ token, requireAuth }) {
                 <p className="muted">
                     Follow NGOs to personalize your feed and strengthen real-time collaboration.
                 </p>
+                <div className="row-actions" style={{ margin: "0.75rem 0" }}>
+                    <input
+                        style={{ flex: 1, minWidth: "180px" }}
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Search by NGO name, sector, or geography..."
+                    />
+                    {sectors.length > 0 && (
+                        <select
+                            value={sectorFilter}
+                            onChange={(e) => setSectorFilter(e.target.value)}
+                        >
+                            <option value="ALL">All sectors</option>
+                            {sectors.map((s) => (
+                                <option key={s} value={s}>
+                                    {s}
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                </div>
+                <p className="muted" style={{ fontSize: "0.78rem" }}>
+                    Showing {filteredNgos.length} of {ngos.length} registered NGOs
+                </p>
                 {loading ? (
                     <p>Loading NGOs...</p>
                 ) : (
                     <div className="results-grid">
-                        {ngos.map((ngo) => {
+                        {filteredNgos.map((ngo) => {
                             const isFollowing = followeeIds.includes(ngo.user_id);
                             return (
                                 <div key={ngo.id} className="card subtle">
@@ -704,11 +880,21 @@ function NetworkingDirectory({ token, requireAuth }) {
                                                 Follow
                                             </button>
                                         )}
+                                        <button
+                                            type="button"
+                                            className="ghost-btn"
+                                            onClick={() => openDetails(ngo)}
+                                        >
+                                            View profile
+                                        </button>
                                     </div>
                                 </div>
                             );
                         })}
                         {ngos.length === 0 && <p className="muted">No NGOs registered yet.</p>}
+                        {ngos.length > 0 && filteredNgos.length === 0 && (
+                            <p className="muted">No NGOs match your current search or filters.</p>
+                        )}
                     </div>
                 )}
             </div>
@@ -720,6 +906,60 @@ function NetworkingDirectory({ token, requireAuth }) {
                     <li>Use the Social Feed page to like, comment, and share updates.</li>
                 </ul>
             </div>
+            {selectedNgo && (
+                <div className="modal-backdrop" onClick={closeDetails}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <h2>{selectedNgo.name}</h2>
+                        {detailsLoading || !selectedDetails ? (
+                            <p className="muted">Loading NGO profile...</p>
+                        ) : (
+                            <>
+                                <p className="muted" style={{ marginBottom: "0.75rem" }}>
+                                    {selectedDetails.mission_statement}
+                                </p>
+                                <div className="pill-row" style={{ marginBottom: "0.75rem" }}>
+                                    <span className="pill">
+                                        Sector: {selectedDetails.sector}
+                                    </span>
+                                    <span className="pill">
+                                        Geography: {selectedDetails.geographic_focus}
+                                    </span>
+                                </div>
+                            </>
+                        )}
+                        <div className="row-actions" style={{ marginTop: "0.5rem" }}>
+                            {selectedNgo && (
+                                followeeIds.includes(selectedNgo.user_id) ? (
+                                    <button
+                                        type="button"
+                                        className="secondary-btn"
+                                        onClick={() => {
+                                            if (!requireAuth()) return;
+                                            unfollow(selectedNgo.user_id);
+                                        }}
+                                    >
+                                        Unfollow
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        className="secondary-btn"
+                                        onClick={() => {
+                                            if (!requireAuth()) return;
+                                            follow(selectedNgo.user_id);
+                                        }}
+                                    >
+                                        Follow
+                                    </button>
+                                )
+                            )}
+                            <button type="button" className="ghost-btn" onClick={closeDetails}>
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

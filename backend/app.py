@@ -1,20 +1,40 @@
 from datetime import datetime, timedelta
 import re
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from models import (
-    NGOProfile,
-    Interaction,
-    Post,
-    Transaction,
-    User,
-    UserRelationship,
-    db,
-)
-from ml_engine.fairness_matching import get_ngo_recommendations
+from pathlib import Path
+
+# Support running both as a package module (preferred: `python -m backend.app`)
+# and as a standalone script from the `backend` directory (`python app.py`).
+try:  # package import
+    from .models import (
+        NGOProfile,
+        Interaction,
+        Post,
+        Transaction,
+        User,
+        UserRelationship,
+        db,
+    )
+    from .ml_engine.fairness_matching import get_ngo_recommendations
+except ImportError:  # script import fallback
+    from models import (  # type: ignore
+        NGOProfile,
+        Interaction,
+        Post,
+        Transaction,
+        User,
+        UserRelationship,
+        db,
+    )
+    from ml_engine.fairness_matching import get_ngo_recommendations  # type: ignore
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = BASE_DIR / "frontend"
 
 
 def create_app():
@@ -26,7 +46,14 @@ def create_app():
     - Social networking engine
     - AI matching & fairness engine
     """
-    app = Flask(__name__)
+    # Single Flask app serves both the JSON API and the React SPA.
+    # Configure the frontend "build" directory as the static folder so that
+    # paths like /css/styles.css and /js/app.js resolve correctly.
+    app = Flask(
+        __name__,
+        static_folder=str(FRONTEND_DIR),
+        static_url_path="",  # serve static files from the root path
+    )
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///platform.db"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -634,6 +661,17 @@ def register_routes(app: Flask):
         prefs = request.json or {}
         ranked = get_ngo_recommendations(prefs)
         return jsonify({"status": "success", "matches": ranked}), 200
+
+    # ---------- Frontend SPA (React) ----------
+    @app.route("/", strict_slashes=False)
+    def index():
+        """
+        Serve the React single-page application shell.
+
+        All static assets (css, js, images) are served by Flask from the
+        configured static folder (the /frontend directory).
+        """
+        return app.send_static_file("index.html")
 
 
 app = create_app()

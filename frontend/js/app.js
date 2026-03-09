@@ -92,8 +92,9 @@ function Toast({ toast, onClose }) {
 }
 
 function AuthPanel({ onAuthenticated, defaultMode = "login" }) {
-    const [mode, setMode] = useState("login"); // 'login' | 'register'
+    const [mode, setMode] = useState("login");
     const [role, setRole] = useState("INDIVIDUAL");
+    const [showPass, setShowPass] = useState(false);
     const [form, setForm] = useState({
         name: "",
         email: "",
@@ -111,9 +112,7 @@ function AuthPanel({ onAuthenticated, defaultMode = "login" }) {
         setForm((prev) => ({ ...prev, [name]: value }));
     };
 
-    useEffect(() => {
-        setMode(defaultMode);
-    }, [defaultMode]);
+    useEffect(() => { setMode(defaultMode); }, [defaultMode]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -121,23 +120,10 @@ function AuthPanel({ onAuthenticated, defaultMode = "login" }) {
         setError(null);
         try {
             if (mode === "login") {
-                const res = await apiRequest(
-                    "/auth/login",
-                    "POST",
-                    {
-                        email: form.email,
-                        password: form.password,
-                    }
-                );
+                const res = await apiRequest("/auth/login", "POST", { email: form.email, password: form.password });
                 onAuthenticated(res.user, res.token);
             } else {
-                const payload = {
-                    name: form.name,
-                    email: form.email,
-                    password: form.password,
-                    role,
-                    organization_name: form.organization_name,
-                };
+                const payload = { name: form.name, email: form.email, password: form.password, role, organization_name: form.organization_name };
                 if (role === "NGO") {
                     payload.mission_statement = form.mission_statement;
                     payload.sector = form.sector;
@@ -153,122 +139,191 @@ function AuthPanel({ onAuthenticated, defaultMode = "login" }) {
         }
     };
 
+    const roleOptions = [
+        { value: "NGO", icon: "🌍", label: "NGO" },
+        { value: "CORPORATE", icon: "🏢", label: "Corporate" },
+        { value: "INDIVIDUAL", icon: "❤️", label: "Individual" },
+    ];
+
     return (
-        <div className="card auth-card">
-            <div className="auth-header">
+        <div className="auth-v2-card">
+            {/* Gradient Header */}
+            <div className="auth-v2-header">
+                <div className="auth-v2-header-tag">✨ Unified Impact Platform</div>
+                <h2 className="auth-v2-title">
+                    {mode === "login" ? "Welcome back" : "Join the movement"}
+                </h2>
+                <p className="auth-v2-subtitle">
+                    {mode === "login"
+                        ? "Sign in to continue your impact journey"
+                        : "Create your account and start making a difference"}
+                </p>
+            </div>
+
+            {/* Tabs */}
+            <div className="auth-v2-tabs">
                 <button
-                    className={mode === "login" ? "tab active" : "tab"}
+                    className={mode === "login" ? "auth-v2-tab active" : "auth-v2-tab"}
                     onClick={() => setMode("login")}
+                    type="button"
                 >
                     Login
                 </button>
                 <button
-                    className={mode === "register" ? "tab active" : "tab"}
+                    className={mode === "register" ? "auth-v2-tab active" : "auth-v2-tab"}
                     onClick={() => setMode("register")}
+                    type="button"
                 >
                     Register
                 </button>
             </div>
-            <form className="form-grid" onSubmit={handleSubmit}>
+
+            <form className="auth-v2-form" onSubmit={handleSubmit}>
+                {/* Register: Role Picker */}
+                {mode === "register" && (
+                    <div className="auth-v2-role-section">
+                        <div className="auth-v2-label-small">I am a...</div>
+                        <div className="auth-v2-role-grid">
+                            {roleOptions.map(r => (
+                                <button
+                                    key={r.value}
+                                    type="button"
+                                    className={role === r.value ? "auth-v2-role-card active" : "auth-v2-role-card"}
+                                    onClick={() => setRole(r.value)}
+                                >
+                                    <span className="auth-v2-role-icon">{r.icon}</span>
+                                    <span className="auth-v2-role-label">{r.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Register: Name + Org */}
                 {mode === "register" && (
                     <>
-                        <label>
-                            Full Name
+                        <div className="auth-v2-input-wrap">
+                            <span className="auth-v2-input-icon">👤</span>
                             <input
+                                className="auth-v2-input"
                                 name="name"
                                 value={form.name}
                                 onChange={handleChange}
+                                placeholder="Full name"
                                 required
                             />
-                        </label>
-                        <label>
-                            Role
-                            <select value={role} onChange={(e) => setRole(e.target.value)}>
-                                <option value="NGO">NGO</option>
-                                <option value="CORPORATE">Corporate Donor</option>
-                                <option value="INDIVIDUAL">Individual Contributor</option>
-                            </select>
-                        </label>
-                        <label>
-                            Organization
+                        </div>
+                        <div className="auth-v2-input-wrap">
+                            <span className="auth-v2-input-icon">🏢</span>
                             <input
+                                className="auth-v2-input"
                                 name="organization_name"
                                 value={form.organization_name}
                                 onChange={handleChange}
+                                placeholder="Organization name (optional)"
                             />
-                        </label>
+                        </div>
                     </>
                 )}
-                <label>
-                    Email
-                    <div className="input-with-icon">
-                        <span className="input-icon" aria-hidden="true">
-                            ✉
-                        </span>
-                        <input
-                            type="email"
-                            name="email"
-                            value={form.email}
-                            onChange={handleChange}
-                            required
-                        />
-                    </div>
-                </label>
-                <label>
-                    Password
-                    <div className="input-with-icon">
-                        <span className="input-icon" aria-hidden="true">
-                            🔒
-                        </span>
-                        <input
-                            type="password"
-                            name="password"
-                            value={form.password}
-                            onChange={handleChange}
-                            required
-                        />
-                    </div>
-                </label>
 
+                {/* Email */}
+                <div className="auth-v2-input-wrap">
+                    <span className="auth-v2-input-icon">✉️</span>
+                    <input
+                        className="auth-v2-input"
+                        type="email"
+                        name="email"
+                        value={form.email}
+                        onChange={handleChange}
+                        placeholder="Email address"
+                        required
+                    />
+                </div>
+
+                {/* Password */}
+                <div className="auth-v2-input-wrap">
+                    <span className="auth-v2-input-icon">🔒</span>
+                    <input
+                        className="auth-v2-input"
+                        type={showPass ? "text" : "password"}
+                        name="password"
+                        value={form.password}
+                        onChange={handleChange}
+                        placeholder="Password"
+                        required
+                    />
+                    <button
+                        type="button"
+                        className="auth-v2-eye-btn"
+                        onClick={() => setShowPass(s => !s)}
+                        tabIndex={-1}
+                    >
+                        {showPass ? "🙈" : "👁️"}
+                    </button>
+                </div>
+
+                {/* Forgot password */}
+                {mode === "login" && (
+                    <div className="auth-v2-forgot">
+                        <button type="button" className="auth-v2-text-link">Forgot password?</button>
+                    </div>
+                )}
+
+                {/* NGO extra fields */}
                 {mode === "register" && role === "NGO" && (
-                    <>
-                        <label className="full-width">
-                            Mission Statement
+                    <div className="auth-v2-ngo-extras">
+                        <div className="auth-v2-section-divider">
+                            <span>NGO Details</span>
+                        </div>
+                        <div className="auth-v2-input-wrap">
+                            <span className="auth-v2-input-icon">📋</span>
                             <textarea
+                                className="auth-v2-input auth-v2-textarea"
                                 name="mission_statement"
                                 value={form.mission_statement}
                                 onChange={handleChange}
+                                placeholder="Mission statement..."
                                 required
                             />
-                        </label>
-                        <label>
-                            Sector
+                        </div>
+                        <div className="auth-v2-input-wrap">
+                            <span className="auth-v2-input-icon">🏷️</span>
                             <input
+                                className="auth-v2-input"
                                 name="sector"
                                 value={form.sector}
                                 onChange={handleChange}
-                                placeholder="Education, Health, Environment..."
+                                placeholder="Sector (e.g. Education, Health)"
                                 required
                             />
-                        </label>
-                        <label>
-                            Geographic Focus
+                        </div>
+                        <div className="auth-v2-input-wrap">
+                            <span className="auth-v2-input-icon">📍</span>
                             <input
+                                className="auth-v2-input"
                                 name="geographic_focus"
                                 value={form.geographic_focus}
                                 onChange={handleChange}
-                                placeholder="Country / Region / City"
+                                placeholder="Geographic focus (city / region / country)"
                                 required
                             />
-                        </label>
-                    </>
+                        </div>
+                    </div>
                 )}
 
-                {error && <div className="error-banner">{error}</div>}
+                {error && <div className="auth-v2-error">{error}</div>}
 
-                <button type="submit" className="primary-btn" disabled={loading}>
-                    {loading ? "Submitting..." : mode === "login" ? "Login" : "Create Account"}
+                <button type="submit" className="auth-v2-submit" disabled={loading}>
+                    {loading ? "Please wait..." : mode === "login" ? "Sign In →" : "Create Account →"}
                 </button>
+
+                <p className="auth-v2-switch">
+                    {mode === "login" ? (
+                        <>Don't have an account? <button type="button" className="auth-v2-text-link bold" onClick={() => setMode("register")}>Register</button></>
+                    ) : (
+                        <>Already have an account? <button type="button" className="auth-v2-text-link bold" onClick={() => setMode("login")}>Login</button></>
+                    )}
+                </p>
             </form>
         </div>
     );
@@ -370,7 +425,7 @@ function NGOPortal({ user, token }) {
                 </div>
                 <NGOPosts token={token} />
             </div>
-            <NgoImpactGraph />
+            <NgoDirectoryInsights token={token} />
             <NgoCatalogDashboard token={token} />
         </>
     );
@@ -455,62 +510,155 @@ function NGOPosts({ token }) {
     );
 }
 
-function NgoImpactGraph() {
-    const data = [
-        { month: "Jan", donations: 4000, volunteers: 2400 },
-        { month: "Feb", donations: 3000, volunteers: 1398 },
-        { month: "Mar", donations: 2000, volunteers: 9800 },
-        { month: "Apr", donations: 2780, volunteers: 3908 },
-        { month: "May", donations: 1890, volunteers: 4800 },
-        { month: "Jun", donations: 2390, volunteers: 3800 },
-        { month: "Jul", donations: 3490, volunteers: 4300 },
+function NgoDirectoryInsights({ token }) {
+    const [ngos, setNgos] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        apiRequest("/ngos", "GET", undefined, token)
+            .then(res => setNgos(res.ngos || []))
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, [token]);
+
+    if (loading) return (
+        <div className="card" style={{ marginTop: "1.5rem", textAlign: "center", padding: "2.5rem" }}>
+            <span style={{ color: "#94a3b8" }}>Loading NGO insights...</span>
+        </div>
+    );
+
+    // Build state → count and sector → count from live data
+    const stateCounts = {};
+    const sectorCounts = {};
+    ngos.forEach(ngo => {
+        // geographic_focus is seeded as "State, Country" or "Global"
+        const geo = (ngo.geographic_focus || "Global");
+        const statePart = geo.split(",")[0].trim();
+        const stateKey = (statePart === "Global" || statePart === "") ? "Global" : statePart;
+        stateCounts[stateKey] = (stateCounts[stateKey] || 0) + 1;
+
+        // sector is pipe-separated tags e.g. "Education|Healthcare|Community Development"
+        (ngo.sector || "General").split("|").forEach(s => {
+            const key = s.trim();
+            if (key) sectorCounts[key] = (sectorCounts[key] || 0) + 1;
+        });
+    });
+
+    const sortedStates  = Object.entries(stateCounts).sort((a, b) => b[1] - a[1]);
+    const sortedSectors = Object.entries(sectorCounts).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    const maxStateCount  = sortedStates[0]?.[1]  || 1;
+    const maxSectorCount = sortedSectors[0]?.[1] || 1;
+
+    const totalNGOs    = ngos.length;
+    const totalStates  = sortedStates.filter(([s]) => s !== "Global").length;
+    const totalSectors = Object.keys(sectorCounts).length;
+
+    // Region color coding
+    const regionColors = {
+        "Karnataka": "#00c896",  "Tamil Nadu": "#00c896",  "Andhra Pradesh": "#00b894",
+        "Telangana": "#00b894",  "Kerala": "#10b981",
+        "Delhi": "#0ea5e9",      "Rajasthan": "#38bdf8",   "Uttar Pradesh": "#38bdf8",
+        "Haryana": "#7dd3fc",    "Punjab": "#7dd3fc",
+        "Maharashtra": "#a78bfa", "Gujarat": "#c084fc",
+        "West Bengal": "#fb923c", "Odisha": "#f97316",
+        "Madhya Pradesh": "#fbbf24",
+        "Global": "#64748b",
+    };
+    const regionDefault = "#94a3b8";
+
+    const sectorPalette = [
+        "#00c896","#10b981","#00b894","#059669",
+        "#0ea5e9","#38bdf8","#22d3ee",
+        "#a78bfa","#c084fc","#e879f9",
+        "#fb923c","#fbbf24",
     ];
 
-    const maxVal = Math.max(...data.map(d => Math.max(d.donations, d.volunteers)));
+    const StatBar = ({ label, count, max, color }) => (
+        <div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.78rem", marginBottom: "0.25rem" }}>
+                <span style={{ color: "#e2e8f0", fontWeight: 600 }}>{label}</span>
+                <span style={{ color, fontWeight: 700 }}>{count} NGO{count !== 1 ? "s" : ""}</span>
+            </div>
+            <div style={{ height: "7px", borderRadius: "999px", background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+                <div style={{
+                    height: "100%",
+                    width: `${Math.round((count / max) * 100)}%`,
+                    background: `linear-gradient(90deg, ${color}, ${color}88)`,
+                    borderRadius: "999px",
+                    transition: "width 0.7s ease",
+                }} />
+            </div>
+        </div>
+    );
 
     return (
         <div className="card" style={{ marginTop: "1.5rem", marginBottom: "1.5rem" }}>
-            <h2>Impact Overview (Mock)</h2>
-            <p className="muted" style={{ marginBottom: "1rem" }}>
-                Monthly interactions and funding progress over time.
-            </p>
-            <div className="bar-chart" style={{ display: "flex", flexDirection: "row", alignItems: "flex-end", height: "200px", gap: "0.5rem", padding: "1rem 0", borderBottom: "1px solid #e2e8f0" }}>
-                {data.map((item, idx) => (
-                    <div key={idx} style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", height: "100%", gap: "4px" }}>
-                        <div style={{ display: "flex", gap: "4px", width: "100%", justifyContent: "center", height: "100%", alignItems: "flex-end" }}>
-                            <div 
-                                style={{ 
-                                    width: "30%", 
-                                    height: `${(item.donations / maxVal) * 100}%`, 
-                                    background: "linear-gradient(to top, #ea580c, #f97316)", 
-                                    borderRadius: "4px 4px 0 0",
-                                    transition: "height 0.5s ease" 
-                                }} 
-                                title={`Donations: ${item.donations}`}
-                            />
-                            <div 
-                                style={{ 
-                                    width: "30%", 
-                                    height: `${(item.volunteers / maxVal) * 100}%`, 
-                                    background: "linear-gradient(to top, #10b981, #34d399)", 
-                                    borderRadius: "4px 4px 0 0",
-                                    transition: "height 0.5s ease" 
-                                }} 
-                                title={`Volunteers: ${item.volunteers}`}
-                            />
-                        </div>
-                        <span style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "4px" }}>{item.month}</span>
-                    </div>
-                ))}
-            </div>
-            <div style={{ display: "flex", gap: "1rem", marginTop: "1rem", justifyContent: "center", fontSize: "0.8rem" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                    <div style={{ width: "12px", height: "12px", background: "#ea580c", borderRadius: "2px" }}></div>
-                    <span>Donations</span>
+            {/* Header row */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.75rem", flexWrap: "wrap", gap: "1rem" }}>
+                <div>
+                    <h2 style={{ margin: 0, fontSize: "1.25rem" }}>NGO Directory Insights</h2>
+                    <p className="muted" style={{ margin: "0.2rem 0 0" }}>Live distribution from the verified NGO catalog</p>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                    <div style={{ width: "12px", height: "12px", background: "#10b981", borderRadius: "2px" }}></div>
-                    <span>Volunteers</span>
+                <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                    {[
+                        { label: "Total NGOs",   value: totalNGOs,    color: "#00c896" },
+                        { label: "States / Regions", value: totalStates,  color: "#38bdf8" },
+                        { label: "Sectors",       value: totalSectors, color: "#a78bfa" },
+                    ].map((s, i) => (
+                        <div key={i} style={{
+                            background: `${s.color}18`,
+                            border: `1px solid ${s.color}38`,
+                            borderRadius: "12px",
+                            padding: "0.45rem 1rem",
+                            textAlign: "center",
+                            minWidth: "80px",
+                        }}>
+                            <div style={{ fontSize: "1.35rem", fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
+                            <div style={{ fontSize: "0.65rem", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em", marginTop: "0.2rem" }}>{s.label}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "2.5rem" }}>
+                {/* Geographic distribution */}
+                <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                        <span style={{ fontSize: "1.1rem" }}>📍</span>
+                        <h3 style={{ margin: 0, fontSize: "0.82rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#94a3b8", fontWeight: 700 }}>Geographic Distribution</h3>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                        {sortedStates.map(([state, count], i) => (
+                            <StatBar key={i} label={state} count={count} max={maxStateCount} color={regionColors[state] || regionDefault} />
+                        ))}
+                    </div>
+                    <div style={{ marginTop: "1.25rem", display: "flex", flexWrap: "wrap", gap: "0.6rem" }}>
+                        {[
+                            { label: "South India",  color: "#00c896" },
+                            { label: "North India",  color: "#38bdf8" },
+                            { label: "West India",   color: "#a78bfa" },
+                            { label: "East India",   color: "#fb923c" },
+                            { label: "Global",       color: "#64748b" },
+                        ].map((r, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.7rem", color: "#94a3b8" }}>
+                                <div style={{ width: "9px", height: "9px", borderRadius: "50%", background: r.color, flexShrink: 0 }} />
+                                {r.label}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Sector breakdown */}
+                <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                        <span style={{ fontSize: "1.1rem" }}>🏷️</span>
+                        <h3 style={{ margin: 0, fontSize: "0.82rem", textTransform: "uppercase", letterSpacing: "0.1em", color: "#94a3b8", fontWeight: 700 }}>Top Sectors</h3>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                        {sortedSectors.map(([sector, count], i) => (
+                            <StatBar key={i} label={sector} count={count} max={maxSectorCount} color={sectorPalette[i % sectorPalette.length]} />
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>
@@ -1742,88 +1890,181 @@ function AnalyticsDashboard({ token }) {
     );
 }
 
-function Chatbot({ onClose }) {
+const QUICK_REPLIES = ["Tell me about NGOs", "How do I donate?", "What is AI matching?", "Show me analytics"];
+
+function Chatbot() {
+    const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState([
-        { role: 'assistant', content: 'Hello! I\'m your AI assistant. I can help you learn about NGOs in our catalog, recommend organizations based on your interests, or answer questions about our platform. What would you like to know?' }
+        { role: 'assistant', content: "👋 Hi! I'm ImpactBot, your AI assistant for the Unified Impact Platform. Ask me anything about NGOs, donations, or platform features!" }
     ]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
+    const messagesEndRef = React.useRef(null);
 
-    const sendMessage = async () => {
-        if (!input.trim() || loading) return;
+    useEffect(() => {
+        if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, loading]);
 
-        const userMessage = { role: 'user', content: input };
+    const sendMessage = async (text) => {
+        const content = (text || input).trim();
+        if (!content || loading) return;
+        const userMessage = { role: 'user', content };
         setMessages(prev => [...prev, userMessage]);
         setInput('');
         setLoading(true);
-
         try {
-            const response = await apiRequest('/chat', 'POST', { message: input });
-            const assistantMessage = { role: 'assistant', content: response.reply };
-            setMessages(prev => [...prev, assistantMessage]);
-        } catch (error) {
-            const errorMessage = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' };
-            setMessages(prev => [...prev, errorMessage]);
+            const response = await apiRequest('/chat', 'POST', { message: content });
+            setMessages(prev => [...prev, { role: 'assistant', content: response.reply }]);
+        } catch {
+            setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }]);
         } finally {
             setLoading(false);
         }
     };
 
-    const handleKeyPress = (e) => {
-        if (e.key === 'Enter') {
-            sendMessage();
-        }
-    };
-
     return (
-        <div className="chatbot-modal">
-            <div className="chatbot-header">
-                <h3>AI Assistant</h3>
-                <button onClick={onClose} className="close-btn">×</button>
-            </div>
-            <div className="chatbot-messages">
-                {messages.map((msg, index) => (
-                    <div key={index} className={`message ${msg.role}`}>
-                        <div className="message-content">{msg.content}</div>
-                    </div>
-                ))}
-                {loading && (
-                    <div className="message assistant">
-                        <div className="message-content typing">...</div>
-                    </div>
-                )}
-            </div>
-            <div className="chatbot-input">
-                <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Ask me about NGOs..."
-                    disabled={loading}
-                />
-                <button onClick={sendMessage} disabled={loading || !input.trim()}>
-                    Send
+        <>
+            {/* Floating Action Button */}
+            {!isOpen && (
+                <button
+                    className="chatbot-fab"
+                    onClick={() => setIsOpen(true)}
+                    title="Chat with ImpactBot"
+                >
+                    💬
+                    <span className="chatbot-fab-dot" />
                 </button>
-            </div>
-        </div>
+            )}
+
+            {/* Chat Window */}
+            {isOpen && (
+                <div className="chatbot-window">
+                    {/* Header */}
+                    <div className="chatbot-window-header">
+                        <div className="chatbot-header-left">
+                            <div className="chatbot-avatar-wrap">🤖</div>
+                            <div>
+                                <div className="chatbot-bot-name">ImpactBot</div>
+                                <div className="chatbot-status">
+                                    <span className="chatbot-online-dot" />
+                                    <span>AI Assistant · Online</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button className="chatbot-close-btn" onClick={() => setIsOpen(false)}>✕</button>
+                    </div>
+
+                    {/* Messages */}
+                    <div className="chatbot-messages-area">
+                        {messages.map((msg, idx) => (
+                            <div key={idx} className={`chatbot-msg-row ${msg.role}`}>
+                                <div className={`chatbot-msg-avatar ${msg.role}`}>
+                                    {msg.role === 'user' ? '👤' : '🤖'}
+                                </div>
+                                <div className={`chatbot-bubble ${msg.role}`}>
+                                    {msg.content}
+                                </div>
+                            </div>
+                        ))}
+                        {loading && (
+                            <div className="chatbot-msg-row assistant">
+                                <div className="chatbot-msg-avatar assistant">🤖</div>
+                                <div className="chatbot-bubble assistant chatbot-typing">
+                                    <span className="chatbot-dot" />
+                                    <span className="chatbot-dot" />
+                                    <span className="chatbot-dot" />
+                                </div>
+                            </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Quick Replies */}
+                    <div className="chatbot-quick-replies">
+                        {QUICK_REPLIES.map(r => (
+                            <button key={r} className="chatbot-quick-btn" onClick={() => sendMessage(r)}>
+                                {r}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Input */}
+                    <div className="chatbot-input-area">
+                        <input
+                            className="chatbot-text-input"
+                            value={input}
+                            onChange={e => setInput(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                            placeholder="Ask me anything..."
+                            disabled={loading}
+                        />
+                        <button
+                            className="chatbot-send-btn"
+                            onClick={() => sendMessage()}
+                            disabled={loading || !input.trim()}
+                        >
+                            ➤
+                        </button>
+                    </div>
+                </div>
+            )}
+        </>
     );
 }
 
+const ALL_TESTIMONIALS = [
+    { name: "Priya Sharma",       role: "Corporate CSR Head",    org: "TechBridge Corp",         text: "The AI matching saved us weeks of research. We found three perfect NGO partners aligned with our environmental goals within hours.",                                              initials: "PS", color: "#00c896" },
+    { name: "Dr. Arjun Mehta",    role: "NGO Founder",           org: "EduReach Foundation",     text: "As a small NGO, visibility was our biggest challenge. This platform gave us credibility scoring and connected us with donors we never would have found.",                        initials: "AM", color: "#10b981" },
+    { name: "Sunita Rao",         role: "Individual Contributor", org: "Impact Champion",         text: "The gamification and social feed make giving feel meaningful. I can follow my favorite NGOs and track exactly how my donations are used.",                                       initials: "SR", color: "#00b894" },
+    { name: "Karthik Nair",       role: "CSR Manager",           org: "Infosys Foundation",      text: "We used to spend months vetting NGOs manually. The credibility score and sector filters let us shortlist quality partners in minutes.",                                         initials: "KN", color: "#38bdf8" },
+    { name: "Meena Iyer",         role: "Executive Director",    org: "GreenShores Trust",       text: "After joining this platform our donation inflow grew by 60% in six months. The exposure to corporate donors changed everything for our small coastal NGO.",                     initials: "MI", color: "#a78bfa" },
+    { name: "Rahul Verma",        role: "Social Impact Lead",    org: "Paytm Foundation",        text: "The networking directory helped us find three complementary NGOs for a joint project. The collaboration feature is something no other platform offers.",                         initials: "RV", color: "#fb923c" },
+    { name: "Anjali Desai",       role: "Volunteer Coordinator", org: "Teach For India",         text: "Managing volunteer sign-ups and tracking hours used to be chaos. The portal streamlined everything and our volunteer retention improved dramatically.",                          initials: "AD", color: "#00c896" },
+    { name: "Vikram Singh",       role: "Philanthropist",        org: "Singh Family Foundation", text: "I donate to eight different NGOs and this is the first platform that lets me track all of them from a single dashboard with real impact metrics.",                               initials: "VS", color: "#10b981" },
+    { name: "Dr. Lakshmi Reddy",  role: "Programme Officer",     org: "CARE India",              text: "The grant request feature let us publish our funding needs publicly. We received expressions of interest from four corporate donors within two weeks.",                           initials: "LR", color: "#00b894" },
+    { name: "Nikhil Bose",        role: "Co-founder",            org: "RuralTech Initiative",    text: "As a rural-focused NGO with limited digital presence, the AI matching algorithm actually brought us to donors who cared about our specific geography.",                         initials: "NB", color: "#38bdf8" },
+    { name: "Farah Khan",         role: "Head of Partnerships",  org: "Reliance Foundation",     text: "We have partnered with eleven NGOs through this platform. The transparency in credibility scoring makes decision-making straightforward.",                                       initials: "FK", color: "#a78bfa" },
+    { name: "Shanthi Pillai",     role: "Beneficiary Advocate",  org: "Akshaya Patra",           text: "The social feed keeps our supporters updated on real ground work. Engagement from our network has more than doubled since we started posting here.",                             initials: "SP", color: "#fb923c" },
+];
+
+function shuffleArray(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
 function Home({ goto, token }) {
-    const [showChatbot, setShowChatbot] = useState(false);
-    // Keep topNgos state if used elsewhere, but remove from render
+    const [visibleIdx, setVisibleIdx] = React.useState(0);
+    const [shuffled]  = React.useState(() => shuffleArray(ALL_TESTIMONIALS));
+    const shown = shuffled.slice(0, 3); // pick 3 random on mount
+
+    React.useEffect(() => {
+        // Auto-cycle the active highlighted card every 4 s
+        const id = setInterval(() => setVisibleIdx(v => (v + 1) % shown.length), 4000);
+        return () => clearInterval(id);
+    }, [shown.length]);
+
     return (
         <div className="home-container">
+            {/* Hero */}
             <section className="hero-section">
                 <div className="hero-content-modern">
-                    <h2 className="hero-title">Empower Change, Together</h2>
+                    <div className="hero-badge-chip">✨ AI-Powered NGO Platform</div>
+                    <h2 className="hero-title">Empower Change,<br/>Together</h2>
                     <p className="hero-tagline">
                         A modern, unified platform bridging the gap between NGOs, corporate donors, and individual contributors. Let's make a real difference.
                     </p>
                     <div className="hero-actions">
                         <button className="btn-modern btn-primary" onClick={() => goto("/login")}>
                             Get Started / Log In
+                        </button>
+                        <button className="btn-modern btn-secondary" onClick={() => goto("/networking", { requireLogin: true })}>
+                            Explore NGOs →
                         </button>
                     </div>
                 </div>
@@ -1834,6 +2075,7 @@ function Home({ goto, token }) {
                 </div>
             </section>
 
+            {/* Stats */}
             <section className="impact-counters">
                 <div className="counter-card glass-card">
                     <h3>50+</h3>
@@ -1849,38 +2091,106 @@ function Home({ goto, token }) {
                 </div>
             </section>
 
+            {/* How It Works */}
             <section className="how-it-works-modern">
                 <h2 className="section-title">How It Works</h2>
+                <p className="section-subtitle">Three simple steps to amplify your social impact</p>
                 <div className="steps-grid">
                     <div className="step-card glass-card">
                         <div className="step-icon">🎯</div>
+                        <div className="step-number">Step 1</div>
                         <h3>Set your intent</h3>
                         <p>Specify causes, geographies, and budgets to shape your targeted impact.</p>
                     </div>
                     <div className="step-card glass-card">
                         <div className="step-icon">🤝</div>
+                        <div className="step-number">Step 2</div>
                         <h3>Match with Needs</h3>
                         <p>Our AI engine surfaces opportunities that align with your focus seamlessly.</p>
                     </div>
                     <div className="step-card glass-card">
                         <div className="step-icon">📈</div>
+                        <div className="step-number">Step 3</div>
                         <h3>Track Real Impact</h3>
                         <p>Integrated analytics and stories help you evidence outcomes clearly.</p>
                     </div>
                 </div>
             </section>
 
-            {/* Chatbot Icon */}
-            <button 
-                className="chatbot-icon" 
-                onClick={() => setShowChatbot(true)}
-                title="Chat with our AI assistant"
-            >
-                💬
-            </button>
+            {/* Features */}
+            <section className="features-section">
+                <div className="features-header">
+                    <h2 className="section-title">Everything You Need</h2>
+                    <p className="section-subtitle">A comprehensive platform built for NGOs, donors, and contributors</p>
+                </div>
+                <div className="features-grid">
+                    {[
+                        { icon: "⚡", title: "AI-Powered Matching", desc: "Our intelligent algorithm connects donors with the right NGOs using fairness multipliers to support lesser-known organizations.", color: "#00c896" },
+                        { icon: "🛡️", title: "Verified NGOs", desc: "Every organization on our platform goes through a rigorous verification process with credibility scoring.", color: "#10b981" },
+                        { icon: "🌍", title: "Global Reach", desc: "Connect with NGOs across 50+ countries working in education, health, environment, and more.", color: "#00b894" },
+                        { icon: "👥", title: "Community Driven", desc: "A thriving social feed, networking directory, and gamification system keeps contributors engaged.", color: "#00c896" },
+                        { icon: "📊", title: "Real-time Analytics", desc: "Track your donations, measure impact, and see where every rupee goes with detailed dashboards.", color: "#059669" },
+                        { icon: "❤️", title: "Multiple Giving Modes", desc: "One-time donations, recurring giving, grant applications — flexible options for all contributor types.", color: "#00b894" },
+                    ].map((f, i) => (
+                        <div key={i} className="feature-card glass-card">
+                            <div className="feature-icon-wrap" style={{ background: f.color + '18', color: f.color }}>
+                                <span style={{ fontSize: '1.3rem' }}>{f.icon}</span>
+                            </div>
+                            <h3 className="feature-title">{f.title}</h3>
+                            <p className="feature-desc">{f.desc}</p>
+                        </div>
+                    ))}
+                </div>
+            </section>
 
-            {/* Chatbot Modal */}
-            {showChatbot && <Chatbot onClose={() => setShowChatbot(false)} />}
+            {/* Testimonials */}
+            <section className="testimonials-section">
+                <h2 className="section-title">Voices of Impact</h2>
+                <p className="section-subtitle">Real stories from our community</p>
+                <div className="testimonials-grid">
+                    {shown.map((t, i) => (
+                        <div
+                            key={i}
+                            className="testimonial-card glass-card"
+                            style={{
+                                transition: "transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease",
+                                transform: visibleIdx === i ? "translateY(-6px)" : "translateY(0)",
+                                borderColor: visibleIdx === i ? `${t.color}55` : undefined,
+                                boxShadow: visibleIdx === i ? `0 20px 40px ${t.color}22` : undefined,
+                            }}
+                        >
+                            <div className="testimonial-header">
+                                <div className="testimonial-avatar" style={{ background: t.color }}>{t.initials}</div>
+                                <div>
+                                    <div className="testimonial-name">{t.name}</div>
+                                    <div className="testimonial-role">{t.role} · {t.org}</div>
+                                </div>
+                            </div>
+                            <p className="testimonial-text">"{t.text}"</p>
+                            <div className="testimonial-stars">★★★★★</div>
+                        </div>
+                    ))}
+                </div>
+                {/* Dot indicators */}
+                <div style={{ display: "flex", justifyContent: "center", gap: "0.5rem", marginTop: "1.5rem" }}>
+                    {shown.map((_, i) => (
+                        <button
+                            key={i}
+                            onClick={() => setVisibleIdx(i)}
+                            style={{
+                                width: visibleIdx === i ? "20px" : "8px",
+                                height: "8px",
+                                borderRadius: "999px",
+                                border: "none",
+                                background: visibleIdx === i ? "#00c896" : "rgba(255,255,255,0.2)",
+                                cursor: "pointer",
+                                transition: "all 0.3s ease",
+                                padding: 0,
+                            }}
+                        />
+                    ))}
+                </div>
+            </section>
         </div>
     );
 }
@@ -1936,8 +2246,7 @@ function AppShell() {
                     <h1>Unified Impact Platform</h1>
                     <p>
                         Bridging NGOs, corporate donors, and individual allies through{" "}
-                        <strong>real-time collaboration</strong> and{" "}
-                        <strong>equitable resource distribution</strong>.
+                        <strong>real-time collaboration</strong>.
                     </p>
                 </div>
                 <nav className="main-nav">
@@ -2017,20 +2326,55 @@ function AppShell() {
                     <Home goto={goto} token={token} />
                 )}
                 {route === "/login" && (
-                    <div className="grid-2 login-layout">
-                        <div className="card login-info-card">
-                            <h2>Login & Registration</h2>
-                            <p className="muted">
-                                Role-based onboarding: NGOs create profiles; donors set funding
-                                preferences and track impact.
-                            </p>
-                            <ul className="bullet-list">
-                                <li>NGO: publish requirements, milestones, and update profile.</li>
-                                <li>Corporate/Individual: get fairness-aware AI matches and donate.</li>
-                                <li>All users: network, follow, like, comment, and share updates.</li>
-                            </ul>
+                    <div className="login-page">
+                        {/* Left branded panel */}
+                        <div className="login-page-left">
+                            <div className="login-left-inner">
+                                <div className="login-left-logo">
+                                    <span className="login-left-logo-icon">🌐</span>
+                                    <span className="login-left-logo-name">Unified Impact Platform</span>
+                                </div>
+                                <h2 className="login-left-headline">
+                                    Bridge the gap.<br/>
+                                    <span className="login-left-headline-accent">Amplify impact.</span>
+                                </h2>
+                                <p className="login-left-desc">
+                                    Connect NGOs, corporate donors, and individual contributors through
+                                    AI-powered matching and real-time collaboration.
+                                </p>
+                                <ul className="login-left-features">
+                                    <li>
+                                        <span className="login-feat-icon">⚡</span>
+                                        <div>
+                                            <strong>AI Matching Engine</strong>
+                                            <span>Fairness-aware algorithm connects you with the right partners</span>
+                                        </div>
+                                    </li>
+                                    <li>
+                                        <span className="login-feat-icon">🛡️</span>
+                                        <div>
+                                            <strong>Verified NGOs</strong>
+                                            <span>Credibility-scored organizations you can trust</span>
+                                        </div>
+                                    </li>
+                                    <li>
+                                        <span className="login-feat-icon">📊</span>
+                                        <div>
+                                            <strong>Real-time Impact</strong>
+                                            <span>Track exactly where your contributions go</span>
+                                        </div>
+                                    </li>
+                                </ul>
+                                {/* Decorative shapes */}
+                                <div className="login-deco-circle login-deco-1" />
+                                <div className="login-deco-circle login-deco-2" />
+                                <div className="login-deco-circle login-deco-3" />
+                            </div>
                         </div>
-                        <AuthPanel onAuthenticated={handleAuthenticated} defaultMode="login" />
+                        {/* Right form panel */}
+                        <div className="login-page-right">
+                            <AuthPanel onAuthenticated={handleAuthenticated} defaultMode="login" />
+                        </div>
                     </div>
                 )}
                 {route === "/ngo-portal" && user && user.role === "NGO" && (
@@ -2052,6 +2396,7 @@ function AppShell() {
                     <AnalyticsDashboard token={token} />
                 )}
             </main>
+            <Chatbot />
             <footer className="footer">
                 <span>© {new Date().getFullYear()} Unified Digital Impact Platform</span>
             </footer>

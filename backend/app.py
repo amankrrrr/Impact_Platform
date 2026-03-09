@@ -1,9 +1,14 @@
 from datetime import datetime, timedelta
 import re
+import os
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import check_password_hash, generate_password_hash
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
 
 from pathlib import Path
 
@@ -20,8 +25,9 @@ try:  # package import
         db,
     )
     from .ml_engine.fairness_matching import get_ngo_recommendations
+    from .ngo_catalog import NGO_CATALOG
 except ImportError:  # script import fallback
-    from models import (  # type: ignore
+    from backend.models import (  # type: ignore
         NGOProfile,
         Interaction,
         Post,
@@ -30,7 +36,8 @@ except ImportError:  # script import fallback
         UserRelationship,
         db,
     )
-    from ml_engine.fairness_matching import get_ngo_recommendations  # type: ignore
+    from backend.ml_engine.fairness_matching import get_ngo_recommendations  # type: ignore
+    from backend.ngo_catalog import NGO_CATALOG  # type: ignore
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -62,6 +69,7 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        seed_ngo_catalog()
 
     register_routes(app)
     return app
@@ -101,6 +109,73 @@ def update_ngo_credibility(ngo: NGOProfile):
     activity_score = min(len(ngo.posts) * 2.0, 10.0)
 
     ngo.credibility_score = min(base + funding_score + activity_score, 100.0)
+
+
+def _slugify_for_email(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(name).lower()).strip("-")
+    return slug or "ngo"
+
+
+def seed_ngo_catalog():
+    """
+    Idempotently seed the NGO database with a curated catalog so that:
+    - The AI matching engine has rich NGO options from day one.
+    - Dashboards and directories can surface sector tags and locations.
+    """
+    # Minimal guard: if there are already more NGO profiles than the catalog,
+    # assume seeding has occurred and skip heavy work.
+    existing_count = NGOProfile.query.count()
+    if existing_count >= len(NGO_CATALOG):
+        return
+
+    for row in NGO_CATALOG:
+        name = (row.get("name") or "").strip()
+        if not name:
+            continue
+
+        synthetic_email = f"{_slugify_for_email(name)}@catalog.local"
+
+        existing_user = User.query.filter(
+            (User.organization_name == name) | (User.email == synthetic_email)
+        ).first()
+
+        if existing_user and existing_user.ngo_profile:
+            # Already seeded.
+            continue
+
+        if not existing_user:
+            user = User(
+                name=name,
+                email=synthetic_email,
+                password_hash=generate_password_hash("catalog-seeded-ngo"),
+                role="NGO",
+                organization_name=name,
+            )
+            db.session.add(user)
+            db.session.flush()
+        else:
+            user = existing_user
+
+        if not user.ngo_profile:
+            state = (row.get("state") or "").strip()
+            country = (row.get("country") or "").strip()
+            geo_parts = [part for part in (state, country) if part]
+            geographic_focus = ", ".join(geo_parts) if geo_parts else "Global"
+
+            description = (row.get("description") or "To create impact.").strip()
+            sector_tags = (row.get("sector_tags") or "General").strip()
+
+            ngo = NGOProfile(
+                user_id=user.id,
+                mission_statement=description,
+                sector=sector_tags,
+                geographic_focus=geographic_focus,
+                verification_status="VERIFIED" if country in {"India", "Global"} else "PENDING",
+            )
+            update_ngo_credibility(ngo)
+            db.session.add(ngo)
+
+    db.session.commit()
 
 
 def get_current_user():
@@ -323,6 +398,7 @@ def register_routes(app: Flask):
                 "geographic_focus": ngo.geographic_focus,
                 "verification_status": ngo.verification_status,
                 "credibility_score": ngo.credibility_score,
+                "description": ngo.mission_statement,
             }
             for ngo in ngos
         ]
@@ -661,6 +737,117 @@ def register_routes(app: Flask):
         prefs = request.json or {}
         ranked = get_ngo_recommendations(prefs)
         return jsonify({"status": "success", "matches": ranked}), 200
+
+    # ---------- Chatbot API ----------
+    @app.route("/api/chat", methods=["POST"])
+    def chat():
+        data = request.json or {}
+        user_message = data.get("message", "")
+        if not user_message:
+            return jsonify({"status": "error", "message": "Message is required"}), 400
+
+        # Prepare context with NGO catalog data (shortened for LLM)
+        ngo_list = [f"- {ngo['name']}: {ngo['sector_tags']} ({ngo['state']})" for ngo in NGO_CATALOG[:20]]  # Limit to first 20 for token efficiency
+        ngo_context = "\n".join(ngo_list) + "\n(And many more NGOs in education, healthcare, environment, etc.)"
+
+        system_prompt = f"""You are an AI assistant for a unified digital platform that connects NGOs, corporate donors, and individual contributors. 
+
+You have access to information about the following NGOs in our catalog:
+
+{ngo_context}
+
+Your role is to:
+1. Answer questions about NGOs in our catalog
+2. Help users find NGOs that match their interests (education, healthcare, environment, etc.)
+3. Provide information about our platform and how it works
+4. Be helpful, friendly, and informative
+
+If a user asks about NGOs not in our catalog, politely explain that we focus on the organizations in our network and suggest similar ones if applicable.
+
+Keep responses concise but informative."""
+
+        try:
+            # First check if the question can be answered from our catalog
+            user_lower = user_message.lower()
+            catalog_answer = None
+
+            # Check if asking about a specific NGO
+            for ngo in NGO_CATALOG:
+                if ngo['name'].lower() in user_lower:
+                    if 'sector' in user_lower:
+                        catalog_answer = f"The sector of {ngo['name']} is: {ngo['sector_tags']}"
+                    else:
+                        catalog_answer = f"{ngo['name']}: {ngo['description']} (Sector: {ngo['sector_tags']}, Location: {ngo['state']}, {ngo['country']})"
+                    break
+
+            # Check for country/location queries
+            if not catalog_answer and ("vs" in user_lower or "versus" in user_lower):
+                # Handle comparison queries like "ind vs nwz"
+                parts = [p.strip() for p in user_lower.replace("versus", "vs").split("vs")]
+                if len(parts) == 2:
+                    country1, country2 = parts[0], parts[1]
+                    reply = ""
+                    if "ind" in country1 or "india" in country1:
+                        india_ngos = [ngo for ngo in NGO_CATALOG if ngo['country'].lower() == 'india']
+                        reply += f"India: We have {len(india_ngos)} NGOs including {india_ngos[0]['name']}. "
+                    if "nwz" in country2 or "nz" in country2 or "new zealand" in country2:
+                        reply += "New Zealand: We don't have local NGOs but have global organizations like UNICEF."
+                    if reply:
+                        catalog_answer = reply
+
+            # Check for general country queries
+            if not catalog_answer:
+                if "india" in user_lower or "indian" in user_lower or "ind" in user_lower:
+                    india_ngos = [ngo for ngo in NGO_CATALOG if ngo['country'].lower() == 'india']
+                    catalog_answer = f"We have {len(india_ngos)} NGOs from India, including {india_ngos[0]['name']} and {india_ngos[1]['name']}."
+                elif "new zealand" in user_lower or "nz" in user_lower or "nzw" in user_lower or "nwz" in user_lower:
+                    catalog_answer = "We currently don't have NGOs from New Zealand in our catalog, but we have global organizations like UNICEF and Red Cross that work worldwide."
+                elif "global" in user_lower or "international" in user_lower:
+                    global_ngos = [ngo for ngo in NGO_CATALOG if ngo['country'].lower() == 'global']
+                    catalog_answer = f"We have global NGOs like {', '.join([ngo['name'] for ngo in global_ngos])}."
+
+            # If we found a catalog answer, return it
+            if catalog_answer:
+                print(f"Using catalog answer: {catalog_answer[:100]}...")
+                return jsonify({"status": "success", "reply": catalog_answer}), 200
+
+            # If no catalog answer, try Groq API
+            groq_key = os.getenv("GROQ_API_KEY")
+            print(f"DEBUG: GROQ_API_KEY present: {groq_key is not None}")
+            if groq_key:
+                print(f"Using Groq with key: {groq_key[:10]}...")
+                from groq import Groq
+                client = Groq(api_key=groq_key)
+                response = client.chat.completions.create(
+                    model="meta-llama/llama-4-scout-17b-16e-instruct",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message}
+                    ],
+                    max_tokens=500,
+                    temperature=0.7
+                )
+                reply = response.choices[0].message.content.strip()
+                print(f"Groq response: {reply[:100]}...")
+                return jsonify({"status": "success", "reply": reply}), 200
+            else:
+                print("DEBUG: No GROQ_API_KEY found")
+                return jsonify({"status": "error", "message": "No AI API key configured", "reply": "Please set your GROQ_API_KEY environment variable to enable AI responses."}), 500
+        except Exception as e:
+            print(f"Error in chat endpoint: {e}")  # Debug logging
+            # Fallback to catalog search if API fails
+            user_lower = user_message.lower()
+            
+            # Check if asking about a specific NGO
+            for ngo in NGO_CATALOG:
+                if ngo['name'].lower() in user_lower:
+                    if 'sector' in user_lower:
+                        reply = f"The sector of {ngo['name']} is: {ngo['sector_tags']}"
+                    else:
+                        reply = f"{ngo['name']}: {ngo['description']} (Sector: {ngo['sector_tags']}, Location: {ngo['state']}, {ngo['country']})"
+                    return jsonify({"status": "success", "reply": reply}), 200
+            
+            return jsonify({"status": "error", "message": "Failed to get AI response", "reply": "Sorry, I'm having trouble connecting to my AI service right now. Please try again."}), 500
 
     # ---------- Frontend SPA (React) ----------
     @app.route("/", strict_slashes=False)

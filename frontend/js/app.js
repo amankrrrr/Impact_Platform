@@ -2,6 +2,46 @@ const { useState, useEffect } = React;
 
 const API_BASE = "http://127.0.0.1:5000/api";
 
+function getSectorIcon(tag) {
+    const t = (tag || "").toLowerCase();
+    if (!t) return "🤝";
+    if (t.includes("education") || t.includes("literacy")) return "📚";
+    if (t.includes("health") || t.includes("healthcare") || t.includes("medical")) return "🏥";
+    if (t.includes("food")) return "🍲";
+    if (t.includes("environment") || t.includes("climate") || t.includes("conservation")) return "🌱";
+    if (t.includes("women")) return "♀";
+    if (t.includes("child") || t.includes("youth")) return "👧";
+    if (t.includes("rural") || t.includes("community")) return "🏘";
+    if (t.includes("art") || t.includes("culture") || t.includes("heritage")) return "🎨";
+    if (t.includes("research") || t.includes("innovation") || t.includes("technology")) return "💡";
+    return "🤝";
+}
+
+function renderSectorTags(sectorString) {
+    return (sectorString || "")
+        .split("|")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((tag) => (
+            <span key={tag} className="pill pill-tag">
+                <span className="pill-icon" aria-hidden="true">
+                    {getSectorIcon(tag)}
+                </span>
+                {tag}
+            </span>
+        ));
+}
+
+function getInitials(name) {
+    if (!name) return "?";
+    const parts = String(name)
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
 function getHashRoute() {
     const raw = window.location.hash || "#/home";
     const cleaned = raw.startsWith("#") ? raw.slice(1) : raw;
@@ -161,23 +201,33 @@ function AuthPanel({ onAuthenticated, defaultMode = "login" }) {
                 )}
                 <label>
                     Email
-                    <input
-                        type="email"
-                        name="email"
-                        value={form.email}
-                        onChange={handleChange}
-                        required
-                    />
+                    <div className="input-with-icon">
+                        <span className="input-icon" aria-hidden="true">
+                            ✉
+                        </span>
+                        <input
+                            type="email"
+                            name="email"
+                            value={form.email}
+                            onChange={handleChange}
+                            required
+                        />
+                    </div>
                 </label>
                 <label>
                     Password
-                    <input
-                        type="password"
-                        name="password"
-                        value={form.password}
-                        onChange={handleChange}
-                        required
-                    />
+                    <div className="input-with-icon">
+                        <span className="input-icon" aria-hidden="true">
+                            🔒
+                        </span>
+                        <input
+                            type="password"
+                            name="password"
+                            value={form.password}
+                            onChange={handleChange}
+                            required
+                        />
+                    </div>
                 </label>
 
                 {mode === "register" && role === "NGO" && (
@@ -275,50 +325,54 @@ function NGOPortal({ user, token }) {
     }
 
     return (
-        <div className="grid-2">
-            <div className="card">
-                <h2>NGO Profile</h2>
-                <form className="form-grid" onSubmit={handleSave}>
-                    <label className="full-width">
-                        Mission Statement
-                        <textarea
-                            name="mission_statement"
-                            value={profile.mission_statement}
-                            onChange={handleChange}
-                        />
-                    </label>
-                    <label>
-                        Sector
-                        <input
-                            name="sector"
-                            value={profile.sector}
-                            onChange={handleChange}
-                        />
-                    </label>
-                    <label>
-                        Geographic Focus
-                        <input
-                            name="geographic_focus"
-                            value={profile.geographic_focus}
-                            onChange={handleChange}
-                        />
-                    </label>
-                    <div className="pill-row">
-                        <span className={`pill status-${profile.verification_status.toLowerCase()}`}>
-                            {profile.verification_status}
-                        </span>
-                        <span className="pill">
-                            Credibility: {profile.credibility_score.toFixed(1)} / 100
-                        </span>
-                    </div>
-                    <button type="submit" className="primary-btn" disabled={saving}>
-                        {saving ? "Saving..." : "Save Profile"}
-                    </button>
-                    {message && <div className="info-banner">{message}</div>}
-                </form>
+        <>
+            <div className="grid-2">
+                <div className="card">
+                    <h2>NGO Profile</h2>
+                    <form className="form-grid" onSubmit={handleSave}>
+                        <label className="full-width">
+                            Mission Statement
+                            <textarea
+                                name="mission_statement"
+                                value={profile.mission_statement}
+                                onChange={handleChange}
+                            />
+                        </label>
+                        <label>
+                            Sector
+                            <input
+                                name="sector"
+                                value={profile.sector}
+                                onChange={handleChange}
+                            />
+                        </label>
+                        <label>
+                            Geographic Focus
+                            <input
+                                name="geographic_focus"
+                                value={profile.geographic_focus}
+                                onChange={handleChange}
+                            />
+                        </label>
+                        <div className="pill-row">
+                            <span className={`pill status-${profile.verification_status.toLowerCase()}`}>
+                                {profile.verification_status}
+                            </span>
+                            <span className="pill">
+                                Credibility: {profile.credibility_score.toFixed(1)} / 100
+                            </span>
+                        </div>
+                        <button type="submit" className="primary-btn" disabled={saving}>
+                            {saving ? "Saving..." : "Save Profile"}
+                        </button>
+                        {message && <div className="info-banner">{message}</div>}
+                    </form>
+                </div>
+                <NGOPosts token={token} />
             </div>
-            <NGOPosts token={token} />
-        </div>
+            <NgoImpactGraph />
+            <NgoCatalogDashboard token={token} />
+        </>
     );
 }
 
@@ -401,6 +455,251 @@ function NGOPosts({ token }) {
     );
 }
 
+function NgoImpactGraph() {
+    const data = [
+        { month: "Jan", donations: 4000, volunteers: 2400 },
+        { month: "Feb", donations: 3000, volunteers: 1398 },
+        { month: "Mar", donations: 2000, volunteers: 9800 },
+        { month: "Apr", donations: 2780, volunteers: 3908 },
+        { month: "May", donations: 1890, volunteers: 4800 },
+        { month: "Jun", donations: 2390, volunteers: 3800 },
+        { month: "Jul", donations: 3490, volunteers: 4300 },
+    ];
+
+    const maxVal = Math.max(...data.map(d => Math.max(d.donations, d.volunteers)));
+
+    return (
+        <div className="card" style={{ marginTop: "1.5rem", marginBottom: "1.5rem" }}>
+            <h2>Impact Overview (Mock)</h2>
+            <p className="muted" style={{ marginBottom: "1rem" }}>
+                Monthly interactions and funding progress over time.
+            </p>
+            <div className="bar-chart" style={{ display: "flex", flexDirection: "row", alignItems: "flex-end", height: "200px", gap: "0.5rem", padding: "1rem 0", borderBottom: "1px solid #e2e8f0" }}>
+                {data.map((item, idx) => (
+                    <div key={idx} style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", height: "100%", gap: "4px" }}>
+                        <div style={{ display: "flex", gap: "4px", width: "100%", justifyContent: "center", height: "100%", alignItems: "flex-end" }}>
+                            <div 
+                                style={{ 
+                                    width: "30%", 
+                                    height: `${(item.donations / maxVal) * 100}%`, 
+                                    background: "linear-gradient(to top, #ea580c, #f97316)", 
+                                    borderRadius: "4px 4px 0 0",
+                                    transition: "height 0.5s ease" 
+                                }} 
+                                title={`Donations: ${item.donations}`}
+                            />
+                            <div 
+                                style={{ 
+                                    width: "30%", 
+                                    height: `${(item.volunteers / maxVal) * 100}%`, 
+                                    background: "linear-gradient(to top, #10b981, #34d399)", 
+                                    borderRadius: "4px 4px 0 0",
+                                    transition: "height 0.5s ease" 
+                                }} 
+                                title={`Volunteers: ${item.volunteers}`}
+                            />
+                        </div>
+                        <span style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "4px" }}>{item.month}</span>
+                    </div>
+                ))}
+            </div>
+            <div style={{ display: "flex", gap: "1rem", marginTop: "1rem", justifyContent: "center", fontSize: "0.8rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                    <div style={{ width: "12px", height: "12px", background: "#ea580c", borderRadius: "2px" }}></div>
+                    <span>Donations</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                    <div style={{ width: "12px", height: "12px", background: "#10b981", borderRadius: "2px" }}></div>
+                    <span>Volunteers</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function NgoCatalogDashboard({ token }) {
+    const [ngos, setNgos] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [sectorFilter, setSectorFilter] = useState("ALL");
+    const [countryFilter, setCountryFilter] = useState("ALL");
+
+    useEffect(() => {
+        async function load() {
+            setLoading(true);
+            try {
+                const res = await apiRequest("/ngos", "GET", undefined, token);
+                setNgos(res.ngos || []);
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        }
+        load();
+    }, [token]);
+
+    const allSectors = Array.from(
+        new Set(
+            ngos.flatMap((ngo) =>
+                (ngo.sector || "")
+                    .split("|")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+            )
+        )
+    ).sort();
+
+    const allCountries = Array.from(
+        new Set(
+            ngos
+                .map((ngo) => {
+                    const geo = ngo.geographic_focus || "";
+                    const parts = geo.split(",");
+                    const country = parts.length > 1 ? parts[parts.length - 1] : parts[0];
+                    return (country || "").trim();
+                })
+                .filter(Boolean)
+        )
+    ).sort();
+
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    const filteredNgos = ngos.filter((ngo) => {
+        if (sectorFilter !== "ALL") {
+            const tags = (ngo.sector || "")
+                .split("|")
+                .map((s) => s.trim())
+                .filter(Boolean);
+            if (!tags.includes(sectorFilter)) {
+                return false;
+            }
+        }
+
+        if (countryFilter !== "ALL") {
+            const geo = ngo.geographic_focus || "";
+            const parts = geo.split(",");
+            const country = (parts.length > 1 ? parts[parts.length - 1] : parts[0] || "").trim();
+            if (country !== countryFilter) {
+                return false;
+            }
+        }
+
+        if (!normalizedSearch) {
+            return true;
+        }
+
+        const haystack = `${ngo.name} ${ngo.sector} ${ngo.geographic_focus} ${
+            ngo.description || ""
+        }`.toLowerCase();
+        return haystack.includes(normalizedSearch);
+    });
+
+    return (
+        <div className="card">
+            <h2>NGO Landscape Dashboard</h2>
+            <p className="muted">
+                Explore the NGO catalog used by the AI matching engine, with sector tags and
+                geographic coverage.
+            </p>
+            <div className="row-actions" style={{ margin: "0.75rem 0" }}>
+                <input
+                    style={{ flex: 1, minWidth: "180px" }}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by NGO name, sector tag, or location..."
+                />
+                {allSectors.length > 0 && (
+                    <select
+                        value={sectorFilter}
+                        onChange={(e) => setSectorFilter(e.target.value)}
+                    >
+                        <option value="ALL">All sectors</option>
+                        {allSectors.map((s) => (
+                            <option key={s} value={s}>
+                                {s}
+                            </option>
+                        ))}
+                    </select>
+                )}
+                {allCountries.length > 0 && (
+                    <select
+                        value={countryFilter}
+                        onChange={(e) => setCountryFilter(e.target.value)}
+                    >
+                        <option value="ALL">All countries</option>
+                        {allCountries.map((c) => (
+                            <option key={c} value={c}>
+                                {c}
+                            </option>
+                        ))}
+                    </select>
+                )}
+            </div>
+            <p className="muted" style={{ fontSize: "0.78rem" }}>
+                Showing {filteredNgos.length} of {ngos.length} NGOs
+            </p>
+            {loading ? (
+                <p>Loading NGO catalog...</p>
+            ) : (
+                <div className="results-grid">
+                    {filteredNgos.map((ngo) => {
+                        const geo = ngo.geographic_focus || "";
+                        const parts = geo.split(",");
+                        const state = (parts[0] || "").trim();
+                        const country =
+                            (parts.length > 1 ? parts[parts.length - 1] : parts[0] || "").trim();
+                        const tags = (ngo.sector || "")
+                            .split("|")
+                            .map((s) => s.trim())
+                            .filter(Boolean);
+
+                        return (
+                            <div key={ngo.id} className="card subtle">
+                                <h3>{ngo.name}</h3>
+                                {ngo.description && (
+                                    <p className="muted" style={{ marginBottom: "0.5rem" }}>
+                                        {ngo.description}
+                                    </p>
+                                )}
+                                <div className="pill-row">
+                                    {tags.map((tag) => (
+                                        <span key={tag} className="pill">
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                                <p style={{ marginTop: "0.5rem" }}>
+                                    <strong>Location:</strong>{" "}
+                                    {state && country ? `${state}, ${country}` : geo || "N/A"}
+                                </p>
+                                <div className="pill-row" style={{ marginTop: "0.5rem" }}>
+                                    <span
+                                        className={`pill status-${ngo.verification_status.toLowerCase()}`}
+                                    >
+                                        {ngo.verification_status}
+                                    </span>
+                                    <span className="pill">
+                                        Credibility: {Number(ngo.credibility_score).toFixed(1)} / 100
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {!loading && ngos.length === 0 && (
+                        <p className="muted">No NGOs are registered in the catalog yet.</p>
+                    )}
+                    {!loading && ngos.length > 0 && filteredNgos.length === 0 && (
+                        <p className="muted">
+                            No NGOs match your current search or filters. Try broadening them.
+                        </p>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function DonorPortal({ user, token }) {
     const [prefs, setPrefs] = useState({
         cause: "",
@@ -446,6 +745,7 @@ function DonorPortal({ user, token }) {
                     name: n.name,
                     sector: n.sector,
                     geographic_focus: n.geographic_focus,
+                    description: n.description,
                     // Neutral-but-consistent placeholder scores so that
                     // sorting and UI elements continue to work.
                     base_similarity: 0.5,
@@ -508,12 +808,25 @@ function DonorPortal({ user, token }) {
         }
     };
 
+    const [sectorChipFilter, setSectorChipFilter] = useState("");
+
     const normalizedSearch = searchTerm.trim().toLowerCase();
     let visibleResults = results;
     if (normalizedSearch) {
         visibleResults = visibleResults.filter((ngo) => {
-            const haystack = `${ngo.name} ${ngo.sector} ${ngo.geographic_focus}`.toLowerCase();
+            const haystack = `${ngo.name} ${ngo.sector} ${ngo.geographic_focus} ${
+                ngo.description || ""
+            }`.toLowerCase();
             return haystack.includes(normalizedSearch);
+        });
+    }
+    if (sectorChipFilter) {
+        visibleResults = visibleResults.filter((ngo) => {
+            const tags = (ngo.sector || "")
+                .split("|")
+                .map((s) => s.trim())
+                .filter(Boolean);
+            return tags.includes(sectorChipFilter);
         });
     }
     visibleResults = [...visibleResults].sort((a, b) => {
@@ -534,9 +847,20 @@ function DonorPortal({ user, token }) {
         return bFinal - aFinal;
     });
 
+    const sectorTagsAvailable = Array.from(
+        new Set(
+            results.flatMap((ngo) =>
+                (ngo.sector || "")
+                    .split("|")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+            )
+        )
+    ).sort();
+
     return (
         <div className="grid-2">
-            <div className="card">
+            <div className="card donor-card">
                 <h2>AI-Matched NGO Recommendations</h2>
                 <form className="form-grid" onSubmit={handleMatch}>
                     <label>
@@ -615,29 +939,73 @@ function DonorPortal({ user, token }) {
                         </label>
                     </div>
                 )}
+                {results.length > 0 && sectorTagsAvailable.length > 0 && (
+                    <div className="filter-chips">
+                        <span className="filter-label">Filter by sector:</span>
+                        <button
+                            type="button"
+                            className={
+                                !sectorChipFilter ? "chip chip-active" : "chip"
+                            }
+                            onClick={() => setSectorChipFilter("")}
+                        >
+                            All
+                        </button>
+                        {sectorTagsAvailable.map((tag) => (
+                            <button
+                                key={tag}
+                                type="button"
+                                className={
+                                    sectorChipFilter === tag ? "chip chip-active" : "chip"
+                                }
+                                onClick={() => setSectorChipFilter(tag)}
+                            >
+                                {getSectorIcon(tag)} {tag}
+                            </button>
+                        ))}
+                    </div>
+                )}
                 <div className="results-grid">
                     {visibleResults.map((ngo) => (
-                        <div key={ngo.ngo_id} className="card subtle">
-                            <h3>{ngo.name}</h3>
-                            <p>
-                                <strong>Sector:</strong> {ngo.sector}
-                            </p>
-                            <p>
-                                <strong>Location:</strong> {ngo.geographic_focus}
-                            </p>
-                            <p>
-                                <strong>Base Similarity:</strong>{" "}
-                                {ngo.base_similarity.toFixed(2)}
-                            </p>
-                            <p>
-                                <strong>Fairness Multiplier:</strong>{" "}
-                                {ngo.fairness_multiplier.toFixed(2)}
-                            </p>
-                            <p>
-                                <strong>Final Score:</strong>{" "}
-                                {ngo.final_score.toFixed(2)}
-                            </p>
-                            <div className="row-actions">
+                        <div key={ngo.ngo_id} className="card subtle ngo-card">
+                            <div className="ngo-card-header">
+                                <div className="avatar-circle">
+                                    {getInitials(ngo.name)}
+                                </div>
+                                <div className="ngo-card-title">
+                                    <h3>{ngo.name}</h3>
+                                    <div className="pill-row">
+                                        {renderSectorTags(ngo.sector)}
+                                    </div>
+                                </div>
+                            </div>
+                            {ngo.description && (
+                                <p className="ngo-card-description">
+                                    {ngo.description.length > 140
+                                        ? `${ngo.description.slice(0, 137)}...`
+                                        : ngo.description}
+                                </p>
+                            )}
+                            <div className="ngo-card-meta">
+                                <span className="location-pill">
+                                    <span className="pill-icon" aria-hidden="true">
+                                        📍
+                                    </span>
+                                    {ngo.geographic_focus || "N/A"}
+                                </span>
+                                <span className="score-pill">
+                                    Match score: {ngo.final_score.toFixed(2)}
+                                </span>
+                            </div>
+                            <div className="ngo-card-metrics">
+                                <span>
+                                    Similarity: {ngo.base_similarity.toFixed(2)}
+                                </span>
+                                <span>
+                                    Fairness boost: {ngo.fairness_multiplier.toFixed(2)}x
+                                </span>
+                            </div>
+                            <div className="row-actions ngo-card-actions">
                                 <button className="secondary-btn" onClick={() => openDonate(ngo)}>
                                     Donate
                                 </button>
@@ -856,13 +1224,23 @@ function NetworkingDirectory({ token, requireAuth }) {
                         {filteredNgos.map((ngo) => {
                             const isFollowing = followeeIds.includes(ngo.user_id);
                             return (
-                                <div key={ngo.id} className="card subtle">
-                                    <h3>{ngo.name}</h3>
-                                    <p>
-                                        <strong>Sector:</strong> {ngo.sector}
-                                    </p>
-                                    <p>
-                                        <strong>Geography:</strong> {ngo.geographic_focus}
+                                <div key={ngo.id} className="card subtle profile-card">
+                                    <div className="profile-header">
+                                        <div className="avatar-circle">
+                                            {getInitials(ngo.name)}
+                                        </div>
+                                        <div>
+                                            <h3>{ngo.name}</h3>
+                                            <div className="pill-row">
+                                                {renderSectorTags(ngo.sector)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p className="profile-location">
+                                        <span className="pill-icon" aria-hidden="true">
+                                            📍
+                                        </span>
+                                        {ngo.geographic_focus}
                                     </p>
                                     <div className="pill-row">
                                         <span className={`pill status-${ngo.verification_status.toLowerCase()}`}>
@@ -870,7 +1248,7 @@ function NetworkingDirectory({ token, requireAuth }) {
                                         </span>
                                         <span className="pill">Credibility: {Number(ngo.credibility_score).toFixed(1)}</span>
                                     </div>
-                                    <div className="row-actions">
+                                    <div className="row-actions profile-actions">
                                         {isFollowing ? (
                                             <button className="secondary-btn" onClick={() => unfollow(ngo.user_id)}>
                                                 Unfollow
@@ -1109,14 +1487,21 @@ function FeedItem({ post, onLike, onComment, onShare, token }) {
         }
     };
 
+    const displayName = post.ngo_name || post.author_name || "Community Member";
+
     return (
         <article className="feed-item">
-            <header>
-                <div className="feed-title">
-                    {post.ngo_name || post.author_name || "Community Member"}
-                </div>
-                <div className="feed-meta">
-                    {new Date(post.created_at).toLocaleString()}
+            <header className="feed-header">
+                <div className="feed-header-main">
+                    <div className="avatar-circle avatar-small">
+                        {getInitials(displayName)}
+                    </div>
+                    <div>
+                        <div className="feed-title">{displayName}</div>
+                        <div className="feed-meta">
+                            {new Date(post.created_at).toLocaleString()}
+                        </div>
+                    </div>
                 </div>
             </header>
             <p>{post.content}</p>
@@ -1211,6 +1596,8 @@ function GamificationPanel({ user, token }) {
         badges.push("Change Maker");
     }
 
+    const progressValue = overview ? Math.min(100, (overview.total_amount || 0) / 1000) : 0;
+
     return (
         <div className="grid-2">
             <div className="card">
@@ -1229,6 +1616,20 @@ function GamificationPanel({ user, token }) {
                         ))}
                     </div>
                 )}
+                <div className="progress-card">
+                    <div className="progress-header">
+                        <span className="muted">Engagement level</span>
+                        <span className="progress-label">
+                            Level {progressValue >= 80 ? "Impact Champion" : progressValue >= 40 ? "Rising Ally" : "Starter"}
+                        </span>
+                    </div>
+                    <div className="progress-track">
+                        <div
+                            className="progress-fill"
+                            style={{ width: `${progressValue}%` }}
+                        />
+                    </div>
+                </div>
             </div>
             <div className="card">
                 <h2>Leaderboard (Sample)</h2>
@@ -1275,14 +1676,29 @@ function AnalyticsDashboard({ token }) {
         ...Object.values(data.per_sector || {}).map((v) => v || 0)
     );
 
+    const totalNgos = Object.keys(data.per_ngo || {}).length;
+    const totalSectors = Object.keys(data.per_sector || {}).length;
+
     return (
         <div className="grid-2">
             <div className="card">
                 <h2>Funding Overview</h2>
-                <p className="metric">
-                    Total Tracked Funding:{" "}
-                    <strong>{data.total_amount.toFixed(2)} USD</strong>
-                </p>
+                <div className="summary-grid">
+                    <div className="summary-card">
+                        <span className="summary-label">Total tracked funding</span>
+                        <span className="summary-value">
+                            {data.total_amount.toFixed(2)} USD
+                        </span>
+                    </div>
+                    <div className="summary-card">
+                        <span className="summary-label">NGOs supported</span>
+                        <span className="summary-value">{totalNgos}</span>
+                    </div>
+                    <div className="summary-card">
+                        <span className="summary-label">Active sectors</span>
+                        <span className="summary-value">{totalSectors}</span>
+                    </div>
+                </div>
                 <h3>By Sector</h3>
                 <div className="bar-chart">
                     {Object.entries(data.per_sector || {}).map(([sector, amount]) => {
@@ -1322,6 +1738,149 @@ function AnalyticsDashboard({ token }) {
                     )}
                 </ul>
             </div>
+        </div>
+    );
+}
+
+function Chatbot({ onClose }) {
+    const [messages, setMessages] = useState([
+        { role: 'assistant', content: 'Hello! I\'m your AI assistant. I can help you learn about NGOs in our catalog, recommend organizations based on your interests, or answer questions about our platform. What would you like to know?' }
+    ]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const sendMessage = async () => {
+        if (!input.trim() || loading) return;
+
+        const userMessage = { role: 'user', content: input };
+        setMessages(prev => [...prev, userMessage]);
+        setInput('');
+        setLoading(true);
+
+        try {
+            const response = await apiRequest('/chat', 'POST', { message: input });
+            const assistantMessage = { role: 'assistant', content: response.reply };
+            setMessages(prev => [...prev, assistantMessage]);
+        } catch (error) {
+            const errorMessage = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' };
+            setMessages(prev => [...prev, errorMessage]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleKeyPress = (e) => {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    };
+
+    return (
+        <div className="chatbot-modal">
+            <div className="chatbot-header">
+                <h3>AI Assistant</h3>
+                <button onClick={onClose} className="close-btn">×</button>
+            </div>
+            <div className="chatbot-messages">
+                {messages.map((msg, index) => (
+                    <div key={index} className={`message ${msg.role}`}>
+                        <div className="message-content">{msg.content}</div>
+                    </div>
+                ))}
+                {loading && (
+                    <div className="message assistant">
+                        <div className="message-content typing">...</div>
+                    </div>
+                )}
+            </div>
+            <div className="chatbot-input">
+                <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Ask me about NGOs..."
+                    disabled={loading}
+                />
+                <button onClick={sendMessage} disabled={loading || !input.trim()}>
+                    Send
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function Home({ goto, token }) {
+    const [showChatbot, setShowChatbot] = useState(false);
+    // Keep topNgos state if used elsewhere, but remove from render
+    return (
+        <div className="home-container">
+            <section className="hero-section">
+                <div className="hero-content-modern">
+                    <h2 className="hero-title">Empower Change, Together</h2>
+                    <p className="hero-tagline">
+                        A modern, unified platform bridging the gap between NGOs, corporate donors, and individual contributors. Let's make a real difference.
+                    </p>
+                    <div className="hero-actions">
+                        <button className="btn-modern btn-primary" onClick={() => goto("/login")}>
+                            Get Started / Log In
+                        </button>
+                    </div>
+                </div>
+                <div className="hero-illustration-modern">
+                    <div className="glass-shape shape-1"></div>
+                    <div className="glass-shape shape-2"></div>
+                    <div className="glass-shape shape-3"></div>
+                </div>
+            </section>
+
+            <section className="impact-counters">
+                <div className="counter-card glass-card">
+                    <h3>50+</h3>
+                    <p>NGOs in Network</p>
+                </div>
+                <div className="counter-card glass-card">
+                    <h3>15+</h3>
+                    <p>Impact Sectors</p>
+                </div>
+                <div className="counter-card glass-card">
+                    <h3>AI Powered</h3>
+                    <p>Matching Algorithm</p>
+                </div>
+            </section>
+
+            <section className="how-it-works-modern">
+                <h2 className="section-title">How It Works</h2>
+                <div className="steps-grid">
+                    <div className="step-card glass-card">
+                        <div className="step-icon">🎯</div>
+                        <h3>Set your intent</h3>
+                        <p>Specify causes, geographies, and budgets to shape your targeted impact.</p>
+                    </div>
+                    <div className="step-card glass-card">
+                        <div className="step-icon">🤝</div>
+                        <h3>Match with Needs</h3>
+                        <p>Our AI engine surfaces opportunities that align with your focus seamlessly.</p>
+                    </div>
+                    <div className="step-card glass-card">
+                        <div className="step-icon">📈</div>
+                        <h3>Track Real Impact</h3>
+                        <p>Integrated analytics and stories help you evidence outcomes clearly.</p>
+                    </div>
+                </div>
+            </section>
+
+            {/* Chatbot Icon */}
+            <button 
+                className="chatbot-icon" 
+                onClick={() => setShowChatbot(true)}
+                title="Chat with our AI assistant"
+            >
+                💬
+            </button>
+
+            {/* Chatbot Modal */}
+            {showChatbot && <Chatbot onClose={() => setShowChatbot(false)} />}
         </div>
     );
 }
@@ -1421,12 +1980,6 @@ function AppShell() {
                         Donor Portal
                     </button>
                     <button
-                        className={route === "/ai-matching" ? "nav-btn active" : "nav-btn"}
-                        onClick={() => goto("/ai-matching", { requireLogin: true })}
-                    >
-                        AI Matching
-                    </button>
-                    <button
                         className={route === "/networking" ? "nav-btn active" : "nav-btn"}
                         onClick={() => goto("/networking", { requireLogin: true })}
                     >
@@ -1461,45 +2014,11 @@ function AppShell() {
             </header>
             <main className="page">
                 {route === "/home" && (
-                    <div className="grid-2">
-                        <div className="card">
-                            <h2>Welcome</h2>
-                            <p>
-                                This unified digital platform aligns NGO needs with donor intent
-                                using an{" "}
-                                <strong>AI-powered matching and fairness engine</strong>. All
-                                activity flows into transparent analytics so CSR and ESG
-                                commitments are easy to evidence.
-                            </p>
-                            <ul className="bullet-list">
-                                <li>
-                                    Real-time collaboration between NGOs, corporates, and
-                                    individual contributors.
-                                </li>
-                                <li>
-                                    Fairness-aware allocation that uplifts historically
-                                    underfunded organizations.
-                                </li>
-                                <li>Social impact storytelling through an integrated feed.</li>
-                            </ul>
-                        </div>
-                        <div className="card">
-                            <h2>Get Started</h2>
-                            <p className="muted">
-                                Use the Login page to sign in or create an account. After login,
-                                explore AI Matching, Networking, Social Feed, and Analytics.
-                            </p>
-                            <div className="row-actions">
-                                <button className="primary-btn" onClick={() => goto("/login")}>
-                                    Go to Login
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    <Home goto={goto} token={token} />
                 )}
                 {route === "/login" && (
-                    <div className="grid-2">
-                        <div className="card">
+                    <div className="grid-2 login-layout">
+                        <div className="card login-info-card">
                             <h2>Login & Registration</h2>
                             <p className="muted">
                                 Role-based onboarding: NGOs create profiles; donors set funding
@@ -1518,9 +2037,6 @@ function AppShell() {
                     <NGOPortal user={user} token={token} />
                 )}
                 {route === "/donor-portal" && user && user.role !== "NGO" && (
-                    <DonorPortal user={user} token={token} />
-                )}
-                {route === "/ai-matching" && user && user.role !== "NGO" && (
                     <DonorPortal user={user} token={token} />
                 )}
                 {route === "/networking" && (

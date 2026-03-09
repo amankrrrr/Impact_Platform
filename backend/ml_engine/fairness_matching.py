@@ -23,8 +23,8 @@ from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+# sklearn imports are handled inside functions to avoid module-level import failures
 
 # Support both package-style imports (recommended when running as
 # `python -m backend.app`) and direct script-style imports.
@@ -65,6 +65,7 @@ def _load_ngo_frame() -> pd.DataFrame:
                 "sector",
                 "geographic_focus",
                 "credibility_score",
+                "description",
             ]
         )
 
@@ -77,6 +78,7 @@ def _load_ngo_frame() -> pd.DataFrame:
                 "sector": _normalize_text(ngo.sector),
                 "geographic_focus": _normalize_text(ngo.geographic_focus),
                 "credibility_score": ngo.credibility_score,
+                "description": (ngo.mission_statement or "").strip(),
             }
         )
     return pd.DataFrame.from_records(records)
@@ -137,49 +139,61 @@ def _encode_features(
     if ngo_df.empty:
         return np.empty((0, 0)), np.empty((0, 0))
 
-    # Prepare NGO features
-    ngo_cat = ngo_df[["sector", "geographic_focus"]].astype(str)
-    ngo_num = pd.DataFrame(
-        {
-            "target_budget": np.full(
-                shape=(len(ngo_df),),
-                fill_value=float(donor_prefs.get("max_budget", 1.0)),
-            )
-        }
-    )
-
-    # Fit encoders on NGO data (support older & newer scikit-learn)
+    # Check if sklearn is available
     try:
-        cat_encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
-    except TypeError:
-        cat_encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
-    num_scaler = StandardScaler()
+        from sklearn.preprocessing import OneHotEncoder, StandardScaler
+        SKLEARN_AVAILABLE = True
+    except ImportError:
+        SKLEARN_AVAILABLE = False
 
-    ngo_cat_encoded = cat_encoder.fit_transform(ngo_cat)
-    ngo_num_scaled = num_scaler.fit_transform(ngo_num)
+    if SKLEARN_AVAILABLE:
+        # sklearn imports are handled inside functions to avoid module-level import failures
+        try:
+            from sklearn.preprocessing import OneHotEncoder, StandardScaler
+            cat_encoder = OneHotEncoder(sparse_output=False, handle_unknown="ignore")
+        except TypeError:
+            cat_encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
+        num_scaler = StandardScaler()
 
-    ngo_features = np.hstack([ngo_cat_encoded, ngo_num_scaled])
+        ngo_cat_encoded = cat_encoder.fit_transform(ngo_cat)
+        ngo_num_scaled = num_scaler.fit_transform(ngo_num)
 
-    # Build donor preference row using the same encoders
-    donor_cat = pd.DataFrame(
-        {
-            "sector": [_normalize_text(donor_prefs.get("cause", ""))],
-            "geographic_focus": [_normalize_text(donor_prefs.get("location", ""))],
-        }
-    ).astype(str)
-    donor_num = pd.DataFrame(
-        {
-            "target_budget": [
-                float(donor_prefs.get("max_budget", donor_prefs.get("budget", 1.0)))
-            ]
-        }
-    )
+        ngo_features = np.hstack([ngo_cat_encoded, ngo_num_scaled])
 
-    donor_cat_encoded = cat_encoder.transform(donor_cat)
-    donor_num_scaled = num_scaler.transform(donor_num)
-    donor_features = np.hstack([donor_cat_encoded, donor_num_scaled])
+        # Build donor preference row using the same encoders
+        donor_cat = pd.DataFrame(
+            {
+                "sector": [_normalize_text(donor_prefs.get("cause", ""))],
+                "geographic_focus": [_normalize_text(donor_prefs.get("location", ""))],
+            }
+        ).astype(str)
+        donor_num = pd.DataFrame(
+            {
+                "target_budget": [
+                    float(donor_prefs.get("max_budget", donor_prefs.get("budget", 1.0)))
+                ]
+            }
+        )
 
-    return ngo_features, donor_features
+        donor_cat_encoded = cat_encoder.transform(donor_cat)
+        donor_num_scaled = num_scaler.transform(donor_num)
+        donor_features = np.hstack([donor_cat_encoded, donor_num_scaled])
+
+        return ngo_features, donor_features
+    else:
+        # Fallback: simple encoding without sklearn
+        # Create basic feature vectors based on string matching
+        ngo_features = []
+        for _, ngo in ngo_df.iterrows():
+            # Simple encoding: 1 if sector/location matches donor preference, 0 otherwise
+            sector_match = 1.0 if _normalize_text(donor_prefs.get("cause", "")).lower() in str(ngo.get("sector", "")).lower() else 0.0
+            location_match = 1.0 if _normalize_text(donor_prefs.get("location", "")).lower() in str(ngo.get("geographic_focus", "")).lower() else 0.0
+            budget_score = 1.0  # Default score
+            ngo_features.append([sector_match, location_match, budget_score])
+
+        donor_features = [[1.0, 1.0, 1.0]]  # Donor preferences vector
+
+        return np.array(ngo_features), np.array(donor_features)
 
 
 def _apply_fairness_adjustment(
@@ -261,6 +275,7 @@ def _apply_fairness_adjustment(
                 "name": row["name"],
                 "sector": row["sector"],
                 "geographic_focus": row["geographic_focus"],
+                "description": row.get("description") or "",
                 "base_similarity": float(row["base_similarity"]),
                 "fairness_multiplier": float(row.get("fairness_multiplier", 1.0)),
                 "final_score": float(row["final_score"]),
@@ -298,8 +313,17 @@ def get_ngo_recommendations(donor_preferences: Dict[str, Any]) -> List[Dict[str,
             return []
 
         # Stage 1: cosine similarity
-        sim_matrix = cosine_similarity(ngo_features, donor_features)
-        base_scores = sim_matrix[:, 0]
+        try:
+            from sklearn.metrics.pairwise import cosine_similarity
+            sim_matrix = cosine_similarity(ngo_features, donor_features)
+            base_scores = sim_matrix[:, 0]
+        except ImportError:
+            # Fallback: simple Euclidean distance-based similarity
+            import numpy as np
+            distances = np.linalg.norm(ngo_features - donor_features, axis=1)
+            # Convert distance to similarity (closer = more similar)
+            max_dist = np.max(distances) if len(distances) > 0 else 1
+            base_scores = 1 - (distances / max_dist) if max_dist > 0 else np.ones(len(distances))
 
         # Stage 2: fairness adjustment
         funding_df = _load_funding_frame(last_n_days=365)

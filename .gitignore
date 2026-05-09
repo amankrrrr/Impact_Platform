@@ -13,3 +13,9 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Local models (just in case)
+sbert_model/
+models/
+
+# figma file
+Redesign\ NGO\ Home\ Page/
